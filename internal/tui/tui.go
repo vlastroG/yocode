@@ -14,12 +14,33 @@ import (
 	"github.com/vlastroG/yocode/internal/agent"
 )
 
-var (
-	userStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	botStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10"))
-	dimStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	errStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+const (
+	userColor = lipgloss.Color("12")
+	botColor  = lipgloss.Color("10")
+	errColor  = lipgloss.Color("9")
 )
+
+var (
+	dimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	// barStyle draws a colored bar on the left of a message block.
+	barStyle = lipgloss.NewStyle().Border(lipgloss.ThickBorder(), false, false, false, true).PaddingLeft(1)
+)
+
+type entryKind int
+
+const (
+	introEntry entryKind = iota
+	userEntry
+	toolEntry
+	botEntry
+	errEntry
+)
+
+// entry is one item of the scrollback; it is rendered at the current width on every refresh.
+type entry struct {
+	kind entryKind
+	text string
+}
 
 type answerMsg struct {
 	text string
@@ -33,7 +54,7 @@ type model struct {
 	input textinput.Model
 	view  viewport.Model
 	spin  spinner.Model
-	lines []string
+	log   []entry
 	busy  bool
 	width int
 }
@@ -48,7 +69,7 @@ func Run(a *agent.Agent, intro string) error {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 
-	m := model{agent: a, input: in, view: viewport.New(80, 20), spin: sp, lines: []string{dimStyle.Render(intro)}}
+	m := model{agent: a, input: in, view: viewport.New(80, 20), spin: sp, log: []entry{{introEntry, intro}}}
 	m.refresh()
 
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
@@ -86,7 +107,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.input.Reset()
 			m.busy = true
-			m.add(userStyle.Render("you › ") + q)
+			m.add(userEntry, q)
 			return m, tea.Batch(m.spin.Tick, ask(m.agent, q))
 		}
 	case tea.MouseMsg:
@@ -94,14 +115,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.view, cmd = m.view.Update(msg)
 		return m, cmd
 	case toolMsg:
-		m.add(dimStyle.Render("  ↳ " + string(msg)))
+		m.add(toolEntry, string(msg))
 		return m, nil
 	case answerMsg:
 		m.busy = false
 		if msg.err != nil {
-			m.add(errStyle.Render("error: " + msg.err.Error()))
+			m.add(errEntry, msg.err.Error())
 		} else {
-			m.add(botStyle.Render("yocode › ") + msg.text)
+			m.add(botEntry, msg.text)
 		}
 		return m, nil
 	case spinner.TickMsg:
@@ -125,14 +146,51 @@ func (m model) View() string {
 	return m.view.View() + "\n" + status + "\n" + m.input.View()
 }
 
-func (m *model) add(line string) {
-	m.lines = append(m.lines, line)
+func (m *model) add(kind entryKind, text string) {
+	m.log = append(m.log, entry{kind, text})
 	m.refresh()
 }
 
 func (m *model) refresh() {
-	m.view.SetContent(lipgloss.NewStyle().Width(m.width).Render(strings.Join(m.lines, "\n\n")))
+	m.view.SetContent(render(m.log, m.width))
 	m.view.GotoBottom()
+}
+
+// render lays out the scrollback: each exchange starts with a rule, questions and answers get a
+// labelled block with a colored left bar, tool calls are dim lines in between.
+func render(log []entry, width int) string {
+	width = max(width, 20)
+	var b strings.Builder
+	for i, e := range log {
+		switch {
+		case i == 0:
+		case e.kind == userEntry:
+			b.WriteString("\n\n" + dimStyle.Render(strings.Repeat("─", width)) + "\n\n")
+		case e.kind == toolEntry && log[i-1].kind == toolEntry:
+			b.WriteString("\n")
+		default:
+			b.WriteString("\n\n")
+		}
+		switch e.kind {
+		case introEntry:
+			b.WriteString(dimStyle.Width(width).Render(e.text))
+		case userEntry:
+			b.WriteString(block("You", e.text, userColor, width))
+		case toolEntry:
+			b.WriteString(dimStyle.PaddingLeft(2).Width(width).Render("↳ " + e.text))
+		case botEntry:
+			b.WriteString(block("yocode", e.text, botColor, width))
+		case errEntry:
+			b.WriteString(block("error", e.text, errColor, width))
+		}
+	}
+	return b.String()
+}
+
+func block(label, text string, color lipgloss.Color, width int) string {
+	head := lipgloss.NewStyle().Bold(true).Foreground(color).Render(label)
+	// Width covers content + padding; the 1-column bar is added outside it.
+	return barStyle.BorderForeground(color).Width(width - 1).Render(head + "\n" + text)
 }
 
 func ask(a *agent.Agent, q string) tea.Cmd {
