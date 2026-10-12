@@ -1,0 +1,112 @@
+// Package agent answers questions using doc retrieval plus model tool calls.
+package agent
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/vlastroG/yocode/internal/ollama"
+	"github.com/vlastroG/yocode/internal/rag"
+)
+
+const systemPrompt = `You are yocode, a read-only assistant that helps the user understand a software project and its documentation.
+- Base answers on the documentation excerpts and tool results. If they don't contain the answer, say so instead of guessing.
+- Use the tools to inspect the repository (files, git status, history, diffs). You cannot modify anything.
+- Mention the documentation source paths you relied on.
+- Be concise.`
+
+const (
+	maxSteps   = 6  // model calls per question
+	maxHistory = 10 // remembered messages (question/answer pairs) across questions
+	docHits    = 5
+)
+
+type LLM interface {
+	Chat(ctx context.Context, model string, msgs []ollama.Message, tools []ollama.Tool) (ollama.Message, error)
+}
+
+type Tools interface {
+	Tools(ctx context.Context) ([]ollama.Tool, error)
+	Call(ctx context.Context, name string, args map[string]any) (string, error)
+}
+
+type Retriever interface {
+	Search(ctx context.Context, query string, n int) ([]rag.Hit, error)
+}
+
+type Agent struct {
+	LLM   LLM
+	Model string
+	Tools Tools
+	Docs  Retriever
+	// OnToolCall, if set, is called before each tool call so the UI can show progress.
+	OnToolCall func(name string, args map[string]any)
+
+	toolDefs []ollama.Tool
+	history  []ollama.Message
+}
+
+func (a *Agent) Ask(ctx context.Context, question string) (string, error) {
+	if a.toolDefs == nil {
+		defs, err := a.Tools.Tools(ctx)
+		if err != nil {
+			return "", fmt.Errorf("list tools: %w", err)
+		}
+		a.toolDefs = defs
+	}
+	hits, err := a.Docs.Search(ctx, question, docHits)
+	if err != nil {
+		return "", fmt.Errorf("search docs: %w", err)
+	}
+
+	msgs := []ollama.Message{{Role: "system", Content: systemPrompt}}
+	msgs = append(msgs, a.history...)
+	msgs = append(msgs, ollama.Message{Role: "user", Content: withDocs(question, hits)})
+
+	for range maxSteps {
+		resp, err := a.LLM.Chat(ctx, a.Model, msgs, a.toolDefs)
+		if err != nil {
+			return "", err
+		}
+		msgs = append(msgs, resp)
+		if len(resp.ToolCalls) == 0 {
+			a.remember(question, resp.Content)
+			return resp.Content, nil
+		}
+		for _, tc := range resp.ToolCalls {
+			if a.OnToolCall != nil {
+				a.OnToolCall(tc.Function.Name, tc.Function.Arguments)
+			}
+			out, err := a.Tools.Call(ctx, tc.Function.Name, tc.Function.Arguments)
+			if err != nil {
+				out = "error: " + err.Error()
+			}
+			msgs = append(msgs, ollama.Message{Role: "tool", Content: out, ToolName: tc.Function.Name})
+		}
+	}
+	return "", fmt.Errorf("no answer after %d tool steps", maxSteps)
+}
+
+// remember keeps the plain question (without doc excerpts) and the answer, so history stays small.
+func (a *Agent) remember(question, answer string) {
+	a.history = append(a.history,
+		ollama.Message{Role: "user", Content: question},
+		ollama.Message{Role: "assistant", Content: answer})
+	if len(a.history) > maxHistory {
+		a.history = a.history[len(a.history)-maxHistory:]
+	}
+}
+
+func withDocs(question string, hits []rag.Hit) string {
+	if len(hits) == 0 {
+		return "No documentation excerpts matched this question.\n\nQuestion: " + question
+	}
+	var b strings.Builder
+	b.WriteString("Documentation excerpts (may not all be relevant):\n\n")
+	for i, h := range hits {
+		fmt.Fprintf(&b, "[%d] %s\n\n", i+1, h.Text)
+	}
+	b.WriteString("Question: " + question)
+	return b.String()
+}
