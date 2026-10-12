@@ -9,11 +9,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Build/vet: `go build ./... && go vet ./...`
 - Run everything: set `PROJECT_PATH` in `.env`, then `docker compose run --rm yocode` (TUI, needs a real terminal) or `docker compose run --rm -T yocode ask "..."` (works without a TTY)
 - Rebuild the image after Go changes: `docker compose build yocode`
-- GPU check: `docker compose exec ollama ollama ps` should show `100% GPU`
+- GPU: `compose.yaml` runs Ollama on the CPU (portable, e.g. Mac); `compose.gpu.yaml` adds the NVIDIA reservation and is enabled through `COMPOSE_FILE` in `.env`. Check with `docker compose exec ollama ollama ps` (`100% GPU`). After changing compose files, recreate the container: `docker compose up -d --force-recreate ollama`.
+- `OLLAMA_URL` in `.env` points yocode at a native Ollama (e.g. `http://host.docker.internal:11434` on a Mac); run with `--no-deps`.
 
 ## Architecture
 
-yocode is a read-only POC: a CLI in the `yocode` container talks to Ollama in the `ollama` container (GPU).
+yocode is a read-only POC: a CLI in the `yocode` container talks to Ollama in the `ollama` container (CPU by default, NVIDIA GPU via `compose.gpu.yaml`) or to a native Ollama via `OLLAMA_URL`.
 
 - `cmd/yocode/main.go` `setup()` is the wiring point: it pulls missing models, builds or reuses the docs index, and spawns `yocode-mcp` over stdio.
 - Docs RAG: `internal/docs` (discover + heading-aware chunking) → `internal/rag` (chromem-go, persisted under `/data/vectors`). The collection name is `config.IndexKey` = hash(project host path, docs host path, embedding model), so a known project reuses its embeddings; `REINDEX=true` rebuilds.
