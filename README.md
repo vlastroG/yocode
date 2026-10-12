@@ -28,7 +28,7 @@ The first run downloads the models (about 5 GB) and builds the docs index. Later
 | `PROJECT_PATH` | required | Project to work with, mounted read-only |
 | `DOCS_PATH` | none | Separate docs project |
 | `CHAT_MODEL` | `qwen2.5:7b` | Ollama chat model (must support tool calling) |
-| `EMBED_MODEL` | `qwen3-embedding:0.6b` | Ollama embedding model (multilingual; handles Russian docs) |
+| `EMBED_MODEL` | `bge-m3` | Ollama embedding model (multilingual; handles Russian docs) |
 | `REINDEX` | `false` | Rebuild the docs index on start |
 
 ## Tools available to the assistant

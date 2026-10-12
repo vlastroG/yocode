@@ -35,7 +35,7 @@ func FromEnv(getenv func(string) string) Config {
 	c := Config{
 		OllamaURL:  strings.TrimRight(get("OLLAMA_URL", "http://localhost:11434"), "/"),
 		ChatModel:  get("CHAT_MODEL", "qwen2.5:7b"),
-		EmbedModel: get("EMBED_MODEL", "qwen3-embedding:0.6b"),
+		EmbedModel: get("EMBED_MODEL", "bge-m3"),
 		NumCtx:     8192,
 		ProjectDir: get("PROJECT_DIR", "/project"),
 		DocsDir:    get("DOCS_DIR", "/docs"),

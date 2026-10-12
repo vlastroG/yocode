@@ -30,7 +30,7 @@ Configuration (environment; with docker compose set these in .env):
   PROJECT_PATH   host path of the project (mounted read-only at /project)
   DOCS_PATH      optional host path of a separate docs project (mounted at /docs)
   CHAT_MODEL     Ollama chat model (default qwen2.5:7b)
-  EMBED_MODEL    Ollama embedding model (default qwen3-embedding:0.6b)
+  EMBED_MODEL    Ollama embedding model (default bge-m3)
   REINDEX        true to rebuild the docs index on start
 `
 
