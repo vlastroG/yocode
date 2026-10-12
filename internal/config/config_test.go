@@ -14,7 +14,7 @@ func TestDefaults(t *testing.T) {
 	if c.OllamaURL != "http://localhost:11434" {
 		t.Errorf("OllamaURL = %q", c.OllamaURL)
 	}
-	if c.ChatModel != "qwen2.5:7b" || c.EmbedModel != "nomic-embed-text" {
+	if c.ChatModel != "qwen2.5:7b" || c.EmbedModel != "qwen3-embedding:0.6b" {
 		t.Errorf("models = %q, %q", c.ChatModel, c.EmbedModel)
 	}
 	if c.ProjectDir != "/project" || c.DocsDir != "/docs" || c.DataDir != "/data" {

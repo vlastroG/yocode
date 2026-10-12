@@ -4,6 +4,7 @@ import "strings"
 
 type Chunk struct {
 	Source  string // e.g. "project/docs/install.md"
+	Title   string // page title (front matter title/description or first "# " heading)
 	Heading string // nearest markdown heading above the chunk
 	Text    string
 }

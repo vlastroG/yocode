@@ -27,7 +27,7 @@ services:
       PROJECT_HOST_PATH: ${PROJECT_PATH:?set PROJECT_PATH in .env}
       DOCS_HOST_PATH: ${DOCS_PATH:-}
       CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:7b}
-      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+      EMBED_MODEL: ${EMBED_MODEL:-qwen3-embedding:0.6b}
       REINDEX: ${REINDEX:-false}
     volumes:
       - ${PROJECT_PATH:?set PROJECT_PATH in .env}:/project:ro

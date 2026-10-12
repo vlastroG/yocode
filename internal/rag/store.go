@@ -58,7 +58,7 @@ func (s *Store) Ensure(ctx context.Context, key string, reindex bool, load func(
 	for i, c := range chunks {
 		documents[i] = chromem.Document{
 			ID:       strconv.Itoa(i),
-			Content:  fmt.Sprintf("Source: %s\nSection: %s\n\n%s", c.Source, c.Heading, c.Text),
+			Content:  fmt.Sprintf("Source: %s\nPage: %s\nSection: %s\n\n%s", c.Source, c.Title, c.Heading, c.Text),
 			Metadata: map[string]string{"source": c.Source, "heading": c.Heading},
 		}
 	}

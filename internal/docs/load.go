@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 )
 
-// chunkSize keeps chunks well under nomic-embed-text's context (~400 tokens each).
+// chunkSize keeps chunks small (~400 tokens) so each embedding stays focused on one topic.
 const chunkSize = 1500
 
 // LoadChunks discovers doc files under each root and splits them into chunks.
@@ -22,7 +22,12 @@ func LoadChunks(roots ...string) ([]Chunk, error) {
 			if err != nil {
 				return nil, err
 			}
-			all = append(all, Split(filepath.Base(root)+"/"+f.Rel, string(b), chunkSize)...)
+			title, body := splitFrontMatter(string(b))
+			chunks := Split(filepath.Base(root)+"/"+f.Rel, body, chunkSize)
+			for i := range chunks {
+				chunks[i].Title = title
+			}
+			all = append(all, chunks...)
 		}
 	}
 	return all, nil
