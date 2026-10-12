@@ -1,0 +1,39 @@
+services:
+  ollama:
+    image: ollama/ollama:0.12.6
+    volumes:
+      - ollama-models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  yocode:
+    build: .
+    depends_on:
+      ollama:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    environment:
+      PROJECT_HOST_PATH: ${PROJECT_PATH:?set PROJECT_PATH in .env}
+      DOCS_HOST_PATH: ${DOCS_PATH:-}
+      CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:7b}
+      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+      REINDEX: ${REINDEX:-false}
+    volumes:
+      - ${PROJECT_PATH:?set PROJECT_PATH in .env}:/project:ro
+      - ${DOCS_PATH:-./.nodocs}:/docs:ro
+      - yocode-data:/data
+
+volumes:
+  ollama-models:
+  yocode-data:
