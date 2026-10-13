@@ -78,3 +78,48 @@ func TestErrorStatusIncludesBody(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestChatJSONSendsSchemaAndDecodes(t *testing.T) {
+	var got chatRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Error(err)
+		}
+		io.WriteString(w, `{"message":{"role":"assistant","content":"{\"findings\":[{\"line\":3}]}"},"done":true}`)
+	}))
+	defer srv.Close()
+
+	var out struct {
+		Findings []struct {
+			Line int `json:"line"`
+		} `json:"findings"`
+	}
+	c := &Client{BaseURL: srv.URL, NumCtx: 4096}
+	err := c.ChatJSON(context.Background(), "m", []Message{{Role: "user", Content: "x"}},
+		json.RawMessage(`{"type":"object"}`), &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got.Format) != `{"type":"object"}` || len(got.Tools) != 0 {
+		t.Errorf("request = %+v", got)
+	}
+	if got.Options["temperature"] != float64(0) || got.Options["num_ctx"] != float64(4096) {
+		t.Errorf("options = %v", got.Options)
+	}
+	if len(out.Findings) != 1 || out.Findings[0].Line != 3 {
+		t.Errorf("decoded = %+v", out)
+	}
+}
+
+func TestChatJSONRejectsInvalidReply(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"message":{"role":"assistant","content":"not json"},"done":true}`)
+	}))
+	defer srv.Close()
+
+	var out map[string]any
+	err := (&Client{BaseURL: srv.URL}).ChatJSON(context.Background(), "m", nil, json.RawMessage(`{}`), &out)
+	if err == nil || !strings.Contains(err.Error(), "not valid JSON") {
+		t.Errorf("err = %v", err)
+	}
+}

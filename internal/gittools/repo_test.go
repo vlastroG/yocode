@@ -24,7 +24,7 @@ func TestReadOnlyCommands(t *testing.T) {
 		want string
 	}{
 		{"status", func() (string, error) { return r.Status(ctx) }, "README.md"},
-		{"log", func() (string, error) { return r.Log(ctx, 5, "") }, "initial"},
+		{"log", func() (string, error) { return r.Log(ctx, 5, "", "") }, "initial"},
 		{"diff", func() (string, error) { return r.Diff(ctx, "", false, "") }, "+changed"},
 		{"branches", func() (string, error) { return r.Branches(ctx) }, "main"},
 		{"ls-files", func() (string, error) { return r.ListFiles(ctx, "") }, "README.md"},
@@ -53,7 +53,7 @@ func TestRejectsUnsafeInput(t *testing.T) {
 	if _, err := r.Diff(ctx, "--output=/tmp/x", false, ""); err == nil {
 		t.Error("Diff accepted an option as ref")
 	}
-	if _, err := r.Log(ctx, 5, "../.."); err == nil {
+	if _, err := r.Log(ctx, 5, "", "../.."); err == nil {
 		t.Error("Log accepted a path outside the project")
 	}
 }
@@ -65,5 +65,46 @@ func TestReadFileRejectsBinary(t *testing.T) {
 	}
 	if _, err := (Repo{Dir: dir}).ReadFile("bin.dat"); err == nil {
 		t.Error("expected error for binary file")
+	}
+}
+
+func TestBranchComparison(t *testing.T) {
+	ctx := context.Background()
+	dir := testutil.GitRepo(t)
+	testutil.Git(t, dir, "checkout", "-q", "-b", "feature")
+	if err := os.WriteFile(filepath.Join(dir, "new.go"), []byte("package x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello\nmore\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	testutil.Git(t, dir, "add", ".")
+	testutil.Git(t, dir, "commit", "-q", "-m", "feature work")
+	r := Repo{Dir: dir}
+
+	changed, err := r.ChangedFiles(ctx, "main...feature")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(changed, "A\tnew.go") || !strings.Contains(changed, "M\tREADME.md") {
+		t.Errorf("changed = %q", changed)
+	}
+
+	log, err := r.Log(ctx, 10, "main..feature", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(log, "feature work") || strings.Contains(log, "initial") {
+		t.Errorf("log = %q", log)
+	}
+
+	if _, err := r.ChangedFiles(ctx, "--output=x"); err == nil {
+		t.Error("ChangedFiles accepted an option as ref")
+	}
+	if _, err := r.ChangedFiles(ctx, ""); err == nil {
+		t.Error("ChangedFiles accepted an empty ref")
+	}
+	if _, err := r.Log(ctx, 5, "--all", ""); err == nil {
+		t.Error("Log accepted an option as ref")
 	}
 }

@@ -26,20 +26,28 @@ func TestDefaults(t *testing.T) {
 	if !strings.HasPrefix(c.IndexKey, "docs-") {
 		t.Errorf("IndexKey = %q", c.IndexKey)
 	}
+	if c.ReviewLanguage != "English" || c.ReviewMaxFiles != 25 {
+		t.Errorf("review settings = %q, %d", c.ReviewLanguage, c.ReviewMaxFiles)
+	}
 }
 
 func TestOverrides(t *testing.T) {
 	c := FromEnv(env(map[string]string{
-		"OLLAMA_URL": "http://ollama:11434/",
-		"CHAT_MODEL": "llama3.1:8b",
-		"REINDEX":    "TRUE",
-		"NUM_CTX":    "4096",
+		"OLLAMA_URL":       "http://ollama:11434/",
+		"CHAT_MODEL":       "llama3.1:8b",
+		"REINDEX":          "TRUE",
+		"NUM_CTX":          "4096",
+		"REVIEW_LANGUAGE":  "Russian",
+		"REVIEW_MAX_FILES": "80",
 	}))
 	if c.OllamaURL != "http://ollama:11434" {
 		t.Errorf("OllamaURL = %q, want trailing slash trimmed", c.OllamaURL)
 	}
 	if c.ChatModel != "llama3.1:8b" || !c.Reindex || c.NumCtx != 4096 {
 		t.Errorf("got %+v", c)
+	}
+	if c.ReviewLanguage != "Russian" || c.ReviewMaxFiles != 80 {
+		t.Errorf("review settings = %q, %d", c.ReviewLanguage, c.ReviewMaxFiles)
 	}
 }
 

@@ -46,11 +46,12 @@ type ToolFunction struct {
 }
 
 type chatRequest struct {
-	Model    string         `json:"model"`
-	Messages []Message      `json:"messages"`
-	Tools    []Tool         `json:"tools,omitempty"`
-	Stream   bool           `json:"stream"`
-	Options  map[string]any `json:"options,omitempty"`
+	Model    string          `json:"model"`
+	Messages []Message       `json:"messages"`
+	Tools    []Tool          `json:"tools,omitempty"`
+	Format   json.RawMessage `json:"format,omitempty"` // JSON schema the reply must follow
+	Stream   bool            `json:"stream"`
+	Options  map[string]any  `json:"options,omitempty"`
 }
 
 func (c *Client) Chat(ctx context.Context, model string, msgs []Message, tools []Tool) (Message, error) {
@@ -63,6 +64,25 @@ func (c *Client) Chat(ctx context.Context, model string, msgs []Message, tools [
 	}
 	err := c.do(ctx, http.MethodPost, "/api/chat", req, &resp)
 	return resp.Message, err
+}
+
+// ChatJSON asks for a reply that follows the JSON schema and decodes it into out. Ollama
+// constrains generation to the schema, so even small models return parseable JSON.
+func (c *Client) ChatJSON(ctx context.Context, model string, msgs []Message, schema json.RawMessage, out any) error {
+	req := chatRequest{Model: model, Messages: msgs, Format: schema, Options: map[string]any{"temperature": 0}}
+	if c.NumCtx > 0 {
+		req.Options["num_ctx"] = c.NumCtx
+	}
+	var resp struct {
+		Message Message `json:"message"`
+	}
+	if err := c.do(ctx, http.MethodPost, "/api/chat", req, &resp); err != nil {
+		return err
+	}
+	if err := json.Unmarshal([]byte(resp.Message.Content), out); err != nil {
+		return fmt.Errorf("model reply is not valid JSON: %w: %.200s", err, resp.Message.Content)
+	}
+	return nil
 }
 
 func (c *Client) HasModel(ctx context.Context, name string) (bool, error) {

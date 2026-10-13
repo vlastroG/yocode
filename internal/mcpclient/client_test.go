@@ -39,7 +39,7 @@ func TestClientListsAndCallsTools(t *testing.T) {
 			t.Errorf("read_file schema = %s", tool.Function.Parameters)
 		}
 	}
-	for _, want := range []string{"git_status", "git_log", "git_diff", "git_branch", "list_files", "read_file"} {
+	for _, want := range []string{"git_status", "git_log", "git_diff", "git_changed_files", "git_branch", "list_files", "read_file"} {
 		if !names[want] {
 			t.Errorf("missing tool %s (got %v)", want, names)
 		}
@@ -55,5 +55,9 @@ func TestClientListsAndCallsTools(t *testing.T) {
 	out, err = c.Call(ctx, "git_status", nil)
 	if err != nil || !strings.Contains(out, "main") {
 		t.Errorf("git_status = %q, %v", out, err)
+	}
+	out, err = c.Call(ctx, "git_changed_files", map[string]any{"ref": "main...main"})
+	if err != nil || out != "(no output)" {
+		t.Errorf("git_changed_files = %q, %v", out, err)
 	}
 }
