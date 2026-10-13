@@ -34,3 +34,6 @@ go.work.sum
 
 # local compose settings
 .env
+
+# implementation plans (local working documents)
+docs/superpowers/plans/
