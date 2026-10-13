@@ -114,3 +114,17 @@ func TestStopsAfterMaxSteps(t *testing.T) {
 		t.Error("expected an error after too many tool steps")
 	}
 }
+
+func TestRememberAddsToHistory(t *testing.T) {
+	llm := &fakeLLM{replies: []ollama.Message{reply("the security one")}}
+	a := newAgent(llm, &fakeTools{})
+	a.Remember("/review main feature", "# Review of main...feature")
+	if _, err := a.Ask(context.Background(), "which finding is worst?"); err != nil {
+		t.Fatal(err)
+	}
+	msgs := llm.calls[0]
+	if !reflect.DeepEqual(msgs[1], ollama.Message{Role: "user", Content: "/review main feature"}) ||
+		!reflect.DeepEqual(msgs[2], ollama.Message{Role: "assistant", Content: "# Review of main...feature"}) {
+		t.Errorf("history = %+v", msgs[1:3])
+	}
+}

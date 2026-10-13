@@ -72,7 +72,7 @@ func (a *Agent) Ask(ctx context.Context, question string) (string, error) {
 		}
 		msgs = append(msgs, resp)
 		if len(resp.ToolCalls) == 0 {
-			a.remember(question, resp.Content)
+			a.Remember(question, resp.Content)
 			return resp.Content, nil
 		}
 		for _, tc := range resp.ToolCalls {
@@ -89,8 +89,9 @@ func (a *Agent) Ask(ctx context.Context, question string) (string, error) {
 	return "", fmt.Errorf("no answer after %d tool steps", maxSteps)
 }
 
-// remember keeps the plain question (without doc excerpts) and the answer, so history stays small.
-func (a *Agent) remember(question, answer string) {
+// Remember adds an exchange to the conversation history: Ask uses it for plain question/answer
+// pairs, and the UI adds review reports so follow-up questions can refer to them.
+func (a *Agent) Remember(question, answer string) {
 	a.history = append(a.history,
 		ollama.Message{Role: "user", Content: question},
 		ollama.Message{Role: "assistant", Content: answer})

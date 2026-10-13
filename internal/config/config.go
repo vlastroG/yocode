@@ -19,6 +19,9 @@ type Config struct {
 	DataDir    string // persistent volume for the vector DB
 	MCPCommand string // path of the yocode-mcp binary
 
+	ReviewLanguage string // language of review reports
+	ReviewMaxFiles int    // files a review may cover before it stops with a warning
+
 	// IndexKey identifies the docs index for this (project, docs, embedding model) combination,
 	// so a project seen before reuses its embeddings.
 	IndexKey string
@@ -33,18 +36,23 @@ func FromEnv(getenv func(string) string) Config {
 		return def
 	}
 	c := Config{
-		OllamaURL:  strings.TrimRight(get("OLLAMA_URL", "http://localhost:11434"), "/"),
-		ChatModel:  get("CHAT_MODEL", "qwen2.5:7b"),
-		EmbedModel: get("EMBED_MODEL", "bge-m3"),
-		NumCtx:     8192,
-		ProjectDir: get("PROJECT_DIR", "/project"),
-		DocsDir:    get("DOCS_DIR", "/docs"),
-		DataDir:    get("DATA_DIR", "/data"),
-		MCPCommand: get("YOCODE_MCP", "yocode-mcp"),
-		Reindex:    parseBool(getenv("REINDEX")),
+		OllamaURL:      strings.TrimRight(get("OLLAMA_URL", "http://localhost:11434"), "/"),
+		ChatModel:      get("CHAT_MODEL", "qwen2.5:7b"),
+		EmbedModel:     get("EMBED_MODEL", "bge-m3"),
+		NumCtx:         8192,
+		ProjectDir:     get("PROJECT_DIR", "/project"),
+		DocsDir:        get("DOCS_DIR", "/docs"),
+		DataDir:        get("DATA_DIR", "/data"),
+		MCPCommand:     get("YOCODE_MCP", "yocode-mcp"),
+		Reindex:        parseBool(getenv("REINDEX")),
+		ReviewLanguage: get("REVIEW_LANGUAGE", "English"),
+		ReviewMaxFiles: 25,
 	}
 	if n, err := strconv.Atoi(getenv("NUM_CTX")); err == nil && n > 0 {
 		c.NumCtx = n
+	}
+	if n, err := strconv.Atoi(getenv("REVIEW_MAX_FILES")); err == nil && n > 0 {
+		c.ReviewMaxFiles = n
 	}
 	c.IndexKey = indexKey(get("PROJECT_HOST_PATH", c.ProjectDir), getenv("DOCS_HOST_PATH"), c.EmbedModel)
 	return c
