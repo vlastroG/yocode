@@ -24,12 +24,20 @@ func (r Repo) Status(ctx context.Context) (string, error) {
 	return r.git(ctx, "status", "--short", "--branch")
 }
 
-func (r Repo) Log(ctx context.Context, n int, path string) (string, error) {
+// Log shows commits of ref (a branch, commit or range such as main..feature; empty = HEAD),
+// optionally limited to path.
+func (r Repo) Log(ctx context.Context, n int, ref, path string) (string, error) {
+	if err := checkRef(ref); err != nil {
+		return "", err
+	}
 	if n <= 0 {
 		n = 20
 	}
 	n = min(n, 200)
 	args := []string{"log", "-n", strconv.Itoa(n), "--date=short", "--pretty=format:%h %ad %an: %s"}
+	if ref != "" {
+		args = append(args, ref)
+	}
 	if path != "" {
 		p, err := relPath(path)
 		if err != nil {
@@ -41,8 +49,8 @@ func (r Repo) Log(ctx context.Context, n int, path string) (string, error) {
 }
 
 func (r Repo) Diff(ctx context.Context, ref string, staged bool, path string) (string, error) {
-	if strings.HasPrefix(ref, "-") || strings.ContainsAny(ref, " \t\n\x00") {
-		return "", fmt.Errorf("invalid ref %q", ref)
+	if err := checkRef(ref); err != nil {
+		return "", err
 	}
 	args := []string{"diff"}
 	if staged {
@@ -59,6 +67,25 @@ func (r Repo) Diff(ctx context.Context, ref string, staged bool, path string) (s
 		args = append(args, "--", p)
 	}
 	return r.git(ctx, args...)
+}
+
+// ChangedFiles lists the files changed in ref (e.g. "main...feature") as "<status>\t<path>" lines.
+func (r Repo) ChangedFiles(ctx context.Context, ref string) (string, error) {
+	if ref == "" {
+		return "", errors.New("ref is required, e.g. main...feature")
+	}
+	if err := checkRef(ref); err != nil {
+		return "", err
+	}
+	return r.git(ctx, "diff", "--name-status", "--find-renames", ref)
+}
+
+// checkRef rejects refs that git would parse as options or that contain whitespace.
+func checkRef(ref string) error {
+	if strings.HasPrefix(ref, "-") || strings.ContainsAny(ref, " \t\n\x00") {
+		return fmt.Errorf("invalid ref %q", ref)
+	}
+	return nil
 }
 
 func (r Repo) Branches(ctx context.Context) (string, error) {
