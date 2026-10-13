@@ -25,6 +25,8 @@ services:
       CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:7b}
       EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
       REINDEX: ${REINDEX:-false}
+      REVIEW_LANGUAGE: ${REVIEW_LANGUAGE:-English}
+      REVIEW_MAX_FILES: ${REVIEW_MAX_FILES:-25}
     volumes:
       - ${PROJECT_PATH:?set PROJECT_PATH in .env}:/project:ro
       - ${DOCS_PATH:-./.nodocs}:/docs:ro
