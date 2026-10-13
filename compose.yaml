@@ -1,0 +1,35 @@
+services:
+  ollama:
+    image: ollama/ollama:0.12.6
+    # Runs on the CPU by default; add compose.gpu.yaml for an NVIDIA GPU (see .env.example).
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  yocode:
+    build: .
+    depends_on:
+      ollama:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    environment:
+      # Point at a native Ollama instead, e.g. http://host.docker.internal:11434 on a Mac (Metal GPU).
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      PROJECT_HOST_PATH: ${PROJECT_PATH:?set PROJECT_PATH in .env}
+      DOCS_HOST_PATH: ${DOCS_PATH:-}
+      CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:7b}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      REINDEX: ${REINDEX:-false}
+    volumes:
+      - ${PROJECT_PATH:?set PROJECT_PATH in .env}:/project:ro
+      - ${DOCS_PATH:-./.nodocs}:/docs:ro
+      - yocode-data:/data
+
+volumes:
+  ollama-models:
+  yocode-data:

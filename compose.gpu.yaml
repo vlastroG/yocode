@@ -1,0 +1,11 @@
+# NVIDIA GPU for Ollama (Windows with Docker Desktop/WSL2, or Linux with the NVIDIA Container Toolkit).
+# Enable it via COMPOSE_FILE in .env, or: docker compose -f compose.yaml -f compose.gpu.yaml ...
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
