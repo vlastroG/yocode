@@ -24,9 +24,10 @@ Configuration (environment; with docker compose set these in .env):
   DOCS_PATH        optional host path of a separate docs project (mounted at /docs)
   CHAT_MODEL       Ollama chat model (default qwen3.5:9b-q4_K_M)
   SEED             sampling seed for reproducible runs, 0 disables (default 42)
-  THINK            true/false to enable/disable model thinking (default: model's own)
+  THINK            true/false to enable/disable model thinking (compose default false; unset: model's own)
   NUM_CTX          chat context window in tokens (default 16384)
-  TASK_MODE        subagents (default) or single: how task steps run
+  TASK_MODE        single (default: one conversation, access of the widest step) or
+                   subagents (one agent per step, with that step's access)
   GIT_USER_NAME    author and committer name of task commits (default yocode)
   GIT_USER_EMAIL   author and committer email of task commits (default yocode@localhost)
   EMBED_MODEL      Ollama embedding model (default bge-m3)

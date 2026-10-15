@@ -46,7 +46,7 @@ The branches must exist in your local clone: run `git fetch` on the host first, 
 
 - Correct the plan by typing in the chat (or any text at the CLI prompt); the plan is revised, repeat until it fits.
 - `/go` (CLI: Enter) runs it, `/cancel` (CLI: `q`) drops it. `--yes` skips the prompt.
-- Every step runs in its own subagent and returns a short summary; the final answer summarizes the result. `TASK_MODE=single` runs all steps in one conversation instead.
+- All steps run in one conversation with the access of the plan's widest step; the final answer summarizes the result. `TASK_MODE=subagents` runs every step in its own subagent with that step's access instead (fewer scenarios passed in our tests).
 - Approved plans are saved as `/data/tasks/<id>.json` and results as `<id>.md` in the `yocode-data` volume. `task --plan <id>` replays a saved plan; `SEED` makes runs reproducible.
 - Review the changes with `/diff` (or `yocode diff`). The project is mounted writable, and there are no pull, push or fetch tools: do those manually on the host.
 
@@ -60,7 +60,7 @@ The branches must exist in your local clone: run `git fetch` on the host first, 
 | `NUM_CTX` | `16384` | Chat context window in tokens |
 | `THINK` | `false` | Model thinking on/off |
 | `SEED` | `42` | Sampling seed (temperature 0); `0` disables |
-| `TASK_MODE` | `subagents` | `subagents` or `single` |
+| `TASK_MODE` | `single` | `single` (one conversation, widest step access) or `subagents` (one agent per step, per-step access) |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `yocode` / `yocode@localhost` | Author and committer of task commits |
 | `EMBED_MODEL` | `bge-m3` | Ollama embedding model (multilingual; handles Russian docs) |
 | `REINDEX` | `false` | Rebuild the docs index on start |

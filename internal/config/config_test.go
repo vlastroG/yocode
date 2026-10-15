@@ -26,7 +26,7 @@ func TestDefaults(t *testing.T) {
 	if !strings.HasPrefix(c.IndexKey, "docs-") {
 		t.Errorf("IndexKey = %q", c.IndexKey)
 	}
-	if c.Seed != 42 || c.Think != nil || c.TaskSingle {
+	if c.Seed != 42 || c.Think != nil || !c.TaskSingle {
 		t.Errorf("seed=%d think=%v single=%v", c.Seed, c.Think, c.TaskSingle)
 	}
 	if c.ReviewLanguage != "English" || c.ReviewMaxFiles != 25 {
@@ -77,7 +77,10 @@ func TestSeedThinkTaskMode(t *testing.T) {
 		t.Errorf("think=%v seed=%d single=%v", c.Think, c.Seed, c.TaskSingle)
 	}
 	c = FromEnv(env(map[string]string{"THINK": "true", "TASK_MODE": "other"}))
-	if c.Think == nil || !*c.Think || c.TaskSingle {
+	if c.Think == nil || !*c.Think || !c.TaskSingle {
 		t.Errorf("think=%v single=%v", c.Think, c.TaskSingle)
+	}
+	if c = FromEnv(env(map[string]string{"TASK_MODE": "subagents"})); c.TaskSingle {
+		t.Error("TASK_MODE=subagents runs in single mode")
 	}
 }

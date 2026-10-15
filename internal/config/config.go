@@ -16,7 +16,7 @@ type Config struct {
 	Seed       int   // > 0 makes chat requests deterministic; 0 disables
 	Think      *bool // nil = leave to the model's default
 
-	TaskSingle bool // TASK_MODE=single: one conversation for all task steps
+	TaskSingle bool // one conversation for all task steps; TASK_MODE=subagents turns it off
 
 	ProjectDir string // project mount inside the container
 	DocsDir    string // optional separate docs mount inside the container
@@ -45,7 +45,7 @@ func FromEnv(getenv func(string) string) Config {
 		EmbedModel:     get("EMBED_MODEL", "bge-m3"),
 		NumCtx:         16384,
 		Seed:           42,
-		TaskSingle:     getenv("TASK_MODE") == "single",
+		TaskSingle:     getenv("TASK_MODE") != "subagents",
 		ProjectDir:     get("PROJECT_DIR", "/project"),
 		DocsDir:        get("DOCS_DIR", "/docs"),
 		DataDir:        get("DATA_DIR", "/data"),

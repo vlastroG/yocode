@@ -1,5 +1,5 @@
-// Package task turns a high-level goal into a plan the user corrects, then runs it with one
-// subagent per step and a root call that reports the result.
+// Package task turns a high-level goal into a plan the user corrects, then runs it in one
+// conversation (or one subagent per step) and a root call that reports the result.
 package task
 
 import (
