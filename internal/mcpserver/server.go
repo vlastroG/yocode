@@ -1,4 +1,4 @@
-// Package mcpserver exposes read-only project tools over MCP.
+// Package mcpserver exposes project tools (reads, file edits) over MCP.
 package mcpserver
 
 import (
@@ -34,6 +34,17 @@ type fileArgs struct {
 	Path string `json:"path" jsonschema:"file path relative to the project root"`
 }
 
+type writeArgs struct {
+	Path    string `json:"path" jsonschema:"file path relative to the project root"`
+	Content string `json:"content" jsonschema:"the complete new content of the file"`
+}
+
+type editArgs struct {
+	Path    string `json:"path" jsonschema:"file path relative to the project root"`
+	OldText string `json:"old_text" jsonschema:"exact text to replace; must occur exactly once in the file"`
+	NewText string `json:"new_text" jsonschema:"replacement text"`
+}
+
 type grepArgs struct {
 	Pattern    string `json:"pattern" jsonschema:"text to search for (a regular expression when regex is true)"`
 	Path       string `json:"path,omitempty" jsonschema:"limit the search to this file or directory"`
@@ -44,8 +55,8 @@ type grepArgs struct {
 // Tool subsets for consumers that get only part of the toolbox.
 var (
 	ReadTools = []string{"git_status", "git_log", "git_diff", "git_changed_files", "git_branch", "list_files", "read_file", "grep"}
-	// EditTools and GitWriteTools are filled in as the tools get registered.
-	EditTools     []string
+	EditTools = []string{"write_file", "edit_file", "delete_file"}
+	// GitWriteTools is filled in as the tools get registered.
 	GitWriteTools []string
 )
 
@@ -69,6 +80,12 @@ func New(repo gittools.Repo) *mcp.Server {
 		func(ctx context.Context, a grepArgs) (string, error) {
 			return repo.Grep(ctx, a.Pattern, a.Path, a.IgnoreCase, a.Regex)
 		})
+	add(s, "write_file", "Create a file or replace its whole content.",
+		func(_ context.Context, a writeArgs) (string, error) { return repo.WriteFile(a.Path, a.Content) })
+	add(s, "edit_file", "Replace one exact, unique occurrence of old_text with new_text in a file. Read the file first; include enough surrounding lines to make old_text unique.",
+		func(_ context.Context, a editArgs) (string, error) { return repo.EditFile(a.Path, a.OldText, a.NewText) })
+	add(s, "delete_file", "Delete a file.",
+		func(_ context.Context, a fileArgs) (string, error) { return repo.DeleteFile(a.Path) })
 	return s
 }
 

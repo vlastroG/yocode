@@ -39,7 +39,7 @@ func TestClientListsAndCallsTools(t *testing.T) {
 			t.Errorf("read_file schema = %s", tool.Function.Parameters)
 		}
 	}
-	for _, want := range []string{"git_status", "git_log", "git_diff", "git_changed_files", "git_branch", "list_files", "read_file", "grep"} {
+	for _, want := range []string{"git_status", "git_log", "git_diff", "git_changed_files", "git_branch", "list_files", "read_file", "grep", "write_file", "edit_file", "delete_file"} {
 		if !names[want] {
 			t.Errorf("missing tool %s (got %v)", want, names)
 		}

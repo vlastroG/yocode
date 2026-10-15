@@ -1,4 +1,4 @@
-// Package gittools runs read-only git and file operations inside a project directory.
+// Package gittools runs git reads and file reads and writes inside a project directory.
 package gittools
 
 import (
@@ -124,7 +124,7 @@ func (r Repo) ReadFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if bytes.IndexByte(b[:min(len(b), 8000)], 0) >= 0 {
+	if isBinary(b) {
 		return "", fmt.Errorf("%s looks like a binary file", path)
 	}
 	return truncate(string(b)), nil
@@ -133,7 +133,7 @@ func (r Repo) ReadFile(path string) (string, error) {
 // relPath validates a project-relative path and returns it slash-separated.
 func relPath(path string) (string, error) {
 	clean := filepath.Clean(filepath.FromSlash(path))
-	if filepath.IsAbs(clean) || escapes(clean) {
+	if filepath.IsAbs(clean) || strings.HasPrefix(path, "/") || escapes(clean) {
 		return "", fmt.Errorf("path %q is outside the project", path)
 	}
 	return filepath.ToSlash(clean), nil
