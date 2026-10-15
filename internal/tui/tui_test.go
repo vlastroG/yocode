@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/vlastroG/yocode/internal/commands"
 )
@@ -41,7 +42,7 @@ func TestRenderSeparatesExchanges(t *testing.T) {
 }
 
 func TestHelpAndSuggestions(t *testing.T) {
-	cmds := commands.New(nil, nil)
+	cmds := commands.New(commands.Deps{})
 	h := help(cmds)
 	for _, want := range []string{"/ask <question>", "/review <base> [head]", "/help", "/exit"} {
 		if !strings.Contains(h, want) {
@@ -49,7 +50,21 @@ func TestHelpAndSuggestions(t *testing.T) {
 		}
 	}
 	s := strings.Join(suggestions(cmds), "|")
-	if !strings.Contains(s, "/review ") || !strings.Contains(s, "/help") {
+	if !strings.Contains(s, "/review ") || !strings.Contains(s, "/help") || !strings.Contains(s, "/go ") || !strings.Contains(s, "/cancel ") {
 		t.Errorf("suggestions = %q", s)
+	}
+}
+
+func TestPlaceholderFollowsPendingPlan(t *testing.T) {
+	pending := true
+	m := model{input: textinput.New(), pending: func() bool { return pending }}
+	next, _ := m.Update(resultMsg{label: "plan", text: "## Plan: x"})
+	if p := next.(model).input.Placeholder; p != pendingPlaceholder {
+		t.Errorf("pending placeholder = %q", p)
+	}
+	pending = false
+	next, _ = next.(model).Update(resultMsg{label: "task", text: "done"})
+	if p := next.(model).input.Placeholder; p != defaultPlaceholder {
+		t.Errorf("placeholder = %q", p)
 	}
 }

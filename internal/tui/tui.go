@@ -13,7 +13,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/vlastroG/yocode/internal/agent"
 	"github.com/vlastroG/yocode/internal/commands"
 	"github.com/vlastroG/yocode/internal/review"
 )
@@ -25,7 +24,15 @@ const (
 )
 
 // labelColors gives some command results their own bar color; others use replyColor.
-var labelColors = map[string]lipgloss.Color{"review": lipgloss.Color("11"), "warning": lipgloss.Color("11")}
+var labelColors = map[string]lipgloss.Color{
+	"review": lipgloss.Color("11"), "warning": lipgloss.Color("11"),
+	"plan": lipgloss.Color("13"), "task": lipgloss.Color("13"),
+}
+
+const (
+	defaultPlaceholder = "Ask a question, or type / for commands"
+	pendingPlaceholder = "Type a correction, /go to run, /cancel to drop"
+)
 
 var (
 	dimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
@@ -66,13 +73,15 @@ type model struct {
 	log   []entry
 	busy  bool
 	width int
+	// pending reports whether a plan awaits /go or /cancel.
+	pending func() bool
 }
 
 // Run starts the chat UI. intro is shown first (index/model info), followed by the command list.
-func Run(a *agent.Agent, rev *review.Pipeline, intro string) error {
-	cmds := commands.New(a, rev)
+func Run(d commands.Deps, intro string) error {
+	cmds := commands.New(d)
 	in := textinput.New()
-	in.Placeholder = "Ask a question, or type / for commands"
+	in.Placeholder = defaultPlaceholder
 	in.Prompt = "> "
 	in.CharLimit = 2000
 	in.ShowSuggestions = true
@@ -82,12 +91,17 @@ func Run(a *agent.Agent, rev *review.Pipeline, intro string) error {
 	sp.Spinner = spinner.Dot
 
 	m := model{cmds: cmds, input: in, view: viewport.New(80, 20), spin: sp,
-		log: []entry{{kind: introEntry, text: intro + "\n\n" + help(cmds)}}}
+		log: []entry{{kind: introEntry, text: intro + "\n\n" + help(cmds)}}, pending: d.Task.Pending}
 	m.refresh()
 
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
-	a.OnToolCall = func(name string, args map[string]any) { p.Send(toolMsg(formatCall(name, args))) }
-	rev.OnProgress = func(s string) { p.Send(toolMsg(s)) }
+	onTool := func(name string, args map[string]any) { p.Send(toolMsg(formatCall(name, args))) }
+	onProgress := func(s string) { p.Send(toolMsg(s)) }
+	d.Agent.OnToolCall = onTool
+	d.Review.OnProgress = onProgress
+	d.Task.Planner.OnToolCall = onTool
+	d.Task.Executor.OnToolCall = onTool
+	d.Task.Executor.OnProgress = onProgress
 	_, err := p.Run()
 	return err
 }
@@ -167,6 +181,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.add(entry{kind: errEntry, text: msg.err.Error()})
 		default:
 			m.add(entry{kind: replyEntry, label: msg.label, text: msg.text})
+		}
+		m.input.Placeholder = defaultPlaceholder
+		if m.pending != nil && m.pending() {
+			m.input.Placeholder = pendingPlaceholder
 		}
 		return m, nil
 	case spinner.TickMsg:
@@ -248,7 +266,7 @@ func block(label, text string, color lipgloss.Color, width int) string {
 func run(c commands.Command, args []string) tea.Cmd {
 	return func() tea.Msg {
 		text, err := c.Run(context.Background(), args)
-		return resultMsg{label: c.Label, text: text, err: err}
+		return resultMsg{label: c.ResultLabel(), text: text, err: err}
 	}
 }
 
