@@ -4,15 +4,15 @@ A local code assistant. It answers questions about a project using its documenta
 
 ## Requirements
 
-Docker Desktop (or Docker Engine on Linux) with about 8 GB of memory available to containers for the default models.
+Docker Desktop (or Docker Engine on Linux) with about 10 GB of memory available to containers for the default models (qwen3.5 9B, ~6.6 GB, plus bge-m3).
 
 | Platform | Setup | Speed |
 |---|---|---|
-| Windows / Linux with an NVIDIA GPU (8 GB VRAM is enough) | Enable `compose.gpu.yaml` via the `COMPOSE_FILE` lines in `.env` | ~5 s per answer |
-| Any machine, CPU only (incl. Mac in Docker) | Nothing to do: Ollama runs on the CPU by default | ~30 s per answer |
+| Windows / Linux with an NVIDIA GPU (8 GB VRAM works; at the 16k context ~16% of the model then runs on the CPU) | Enable `compose.gpu.yaml` via the `COMPOSE_FILE` lines in `.env` | seconds per answer, ~1 min per task |
+| Any machine, CPU only (incl. Mac in Docker) | Nothing to do: Ollama runs on the CPU by default | much slower (untested with the 9B model) |
 | Mac, Apple GPU | Install [Ollama](https://ollama.com) natively, set `OLLAMA_URL=http://host.docker.internal:11434` and run with `--no-deps` | fast (untested) |
 
-Docker can't pass the Apple GPU into containers, which is why the native Ollama setup exists. On a Mac, check that Docker Desktop's memory limit (Settings → Resources) is at least 8 GB when running Ollama in Docker.
+Docker can't pass the Apple GPU into containers, which is why the native Ollama setup exists. On a Mac, check that Docker Desktop's memory limit (Settings → Resources) is at least 10 GB when running Ollama in Docker.
 
 ## Usage
 
@@ -32,7 +32,7 @@ Docker can't pass the Apple GPU into containers, which is why the native Ollama 
 
 The chat needs a real terminal: use PowerShell or Windows Terminal (in Git Bash's mintty, prefix the command with `winpty`). Without a terminal, run a command with `-T`: `docker compose run --rm -T yocode ask "..."`.
 
-The first run downloads the models (about 5 GB) and builds the docs index. Later runs reuse both. Set `REINDEX=true` in `.env` (or pass `-e REINDEX=true`) to rebuild the index after the docs change. Stop Ollama with `docker compose down`.
+The first run downloads the models (about 8 GB) and builds the docs index. Later runs reuse both. Set `REINDEX=true` in `.env` (or pass `-e REINDEX=true`) to rebuild the index after the docs change. Stop Ollama with `docker compose down`.
 
 ## Reviewing a branch
 
@@ -47,8 +47,10 @@ The branches must exist in your local clone: run `git fetch` on the host first, 
 - Correct the plan by typing in the chat (or any text at the CLI prompt); the plan is revised, repeat until it fits.
 - `/go` (CLI: Enter) runs it, `/cancel` (CLI: `q`) drops it. `--yes` skips the prompt.
 - All steps run in one conversation with the access of the plan's widest step; the final answer summarizes the result. `TASK_MODE=subagents` runs every step in its own subagent with that step's access instead (fewer scenarios passed in our tests).
-- Approved plans are saved as `/data/tasks/<id>.json` and results as `<id>.md` in the `yocode-data` volume. `task --plan <id>` replays a saved plan; `SEED` makes runs reproducible.
+- Approved plans are saved as `/data/tasks/<id>.json` and results as `<id>.md` in the `yocode-data` volume. `task --plan <id>` replays a saved plan as `<id>-replay-<time>`; `SEED` makes runs reproducible.
 - Review the changes with `/diff` (or `yocode diff`). The project is mounted writable, and there are no pull, push or fetch tools: do those manually on the host.
+- Commits made by yocode skip the repo's git hooks and signing (`--no-verify`, `commit.gpgsign=false`).
+- After a task edits docs, run with `REINDEX=true` once to refresh the docs index.
 
 ## Configuration
 
@@ -58,7 +60,7 @@ The branches must exist in your local clone: run `git fetch` on the host first, 
 | `DOCS_PATH` | none | Separate docs project |
 | `CHAT_MODEL` | `qwen3.5:9b-q4_K_M` | Ollama chat model (must support tool calling) |
 | `NUM_CTX` | `16384` | Chat context window in tokens |
-| `THINK` | `false` | Model thinking on/off |
+| `THINK` | `false` (compose; unset: model's own) | Model thinking on/off |
 | `SEED` | `42` | Sampling seed (temperature 0); `0` disables |
 | `TASK_MODE` | `single` | `single` (one conversation, widest step access) or `subagents` (one agent per step, per-step access) |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `yocode` / `yocode@localhost` | Author and committer of task commits |
