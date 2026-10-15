@@ -157,14 +157,23 @@ func (p *Planner) Revise(ctx context.Context, history []deepseek.Message, feedba
 
 func (p *Planner) plan(ctx context.Context, history []deepseek.Message) (Plan, error) {
 	msgs := append([]deepseek.Message{{Role: "system", Content: planSystemPrompt}}, history...)
-	var plan Plan
-	if err := p.LLM.ChatJSON(ctx, p.Model, msgs, planSchema, &plan); err != nil {
-		return Plan{}, fmt.Errorf("plan: %w", err)
+	// JSON mode guarantees an object, not the schema: an invalid plan gets one retry with the error
+	for attempt := 0; ; attempt++ {
+		var plan Plan
+		if err := p.LLM.ChatJSON(ctx, p.Model, msgs, planSchema, &plan); err != nil {
+			return Plan{}, fmt.Errorf("plan: %w", err)
+		}
+		err := validate(plan)
+		if err == nil {
+			return plan, nil
+		}
+		if attempt == 1 {
+			return Plan{}, fmt.Errorf("invalid plan: %w", err)
+		}
+		b, _ := json.Marshal(plan)
+		msgs = append(msgs[:len(msgs):len(msgs)], deepseek.Message{Role: "assistant", Content: string(b)},
+			deepseek.Message{Role: "user", Content: "This plan is invalid: " + err.Error() + ". Return the whole corrected plan as JSON."})
 	}
-	if err := validate(plan); err != nil {
-		return Plan{}, fmt.Errorf("invalid plan: %w", err)
-	}
-	return plan, nil
 }
 
 // taskHistory starts the planning conversation that corrections are appended to. The goal comes

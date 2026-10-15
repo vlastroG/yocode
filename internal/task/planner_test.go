@@ -131,7 +131,7 @@ func TestReviseSkipsExploration(t *testing.T) {
 }
 
 func TestDraftRejectsEmptyPlan(t *testing.T) {
-	llm := &fakeLLM{jsons: []string{`{"steps":[]}`}}
+	llm := &fakeLLM{jsons: []string{`{"steps":[]}`, `{"steps":[]}`}}
 	if _, _, err := newPlanner(llm).Draft(context.Background(), "x"); err == nil {
 		t.Fatal("expected error for a plan with no steps")
 	}
@@ -178,5 +178,23 @@ func TestMissingPathsIgnoresNonFiles(t *testing.T) {
 	got := missingPaths(goal, Plan{Steps: []Step{{Title: "t", Instructions: "edit config.yaml"}}})
 	if want := []string{"docs/guide.md", "notes.txt"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("missing = %q, want %q", got, want)
+	}
+}
+
+func TestDraftRetriesAnInvalidPlanWithTheError(t *testing.T) {
+	llm := &fakeLLM{jsons: []string{
+		`{"steps":[{"title":"Add docs","instructions":"document greet.go"}]}`,
+		`{"steps":[{"title":"Add docs","instructions":"document greet.go","access":"edit"}]}`,
+	}}
+	plan, _, err := newPlanner(llm).Draft(context.Background(), "add docs to greet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Steps) != 1 || plan.Steps[0].Access != AccessEdit {
+		t.Errorf("plan = %+v", plan)
+	}
+	retry := llm.jsonCalls[1]
+	if last := retry[len(retry)-1]; !strings.Contains(last.Content, "unknown access") {
+		t.Errorf("retry message = %q", last.Content)
 	}
 }
