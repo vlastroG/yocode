@@ -109,6 +109,12 @@ func (s *Session) Replay(ctx context.Context, id string) (Result, error) {
 func (s *Session) run(ctx context.Context, plan Plan) (Result, error) {
 	res, err := s.Executor.Run(ctx, plan)
 	if err != nil {
+		// the steps ran and may have changed files, so record them anyway
+		if len(res.Steps) > 0 {
+			if serr := s.Store.SaveResult(res); serr != nil {
+				err = errors.Join(err, fmt.Errorf("save result: %w", serr))
+			}
+		}
 		return res, err
 	}
 	if err := s.Store.SaveResult(res); err != nil {

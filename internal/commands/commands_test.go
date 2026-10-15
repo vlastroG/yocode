@@ -62,10 +62,14 @@ const testPlan = `{"steps":[{"title":"Write CHANGELOG","instructions":"create CH
 type fakeLLM struct {
 	chats     [][]ollama.Message
 	planCalls int
+	rootErr   error // returned by the call that writes a task's result
 }
 
 func (f *fakeLLM) Chat(_ context.Context, _ string, msgs []ollama.Message, _ []ollama.Tool) (ollama.Message, error) {
 	f.chats = append(f.chats, msgs)
+	if f.rootErr != nil && strings.HasPrefix(msgs[0].Content, "You report the result") {
+		return ollama.Message{}, f.rootErr
+	}
 	return ollama.Message{Role: "assistant", Content: "ok"}, nil
 }
 
@@ -168,6 +172,27 @@ func TestGoRemembersResult(t *testing.T) {
 	}
 	if !strings.Contains(all.String(), "/task write a changelog") || !strings.Contains(all.String(), "Write CHANGELOG") {
 		t.Errorf("ask history lacks the task result:\n%s", all.String())
+	}
+}
+
+func TestGoKeepsStepsWhenRootFails(t *testing.T) {
+	r := newTaskRig(t)
+	r.llm.rootErr = errors.New("ollama down")
+	s := New(r.deps)
+	runCmd(t, s, "task", "write", "a", "changelog")
+	c, _ := s.Lookup("go")
+	_, err := c.Run(context.Background(), nil)
+	if err == nil || !strings.Contains(err.Error(), "ollama down") || !strings.Contains(err.Error(), "Write CHANGELOG") {
+		t.Fatalf("err = %v", err)
+	}
+	r.llm.rootErr = nil
+	runCmd(t, s, "ask", "what changed?")
+	var all strings.Builder
+	for _, m := range r.llm.chats[len(r.llm.chats)-1] {
+		all.WriteString(m.Content + "\n")
+	}
+	if !strings.Contains(all.String(), "/task write a changelog") {
+		t.Errorf("ask history lacks the partial result:\n%s", all.String())
 	}
 }
 

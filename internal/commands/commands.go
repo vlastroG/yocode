@@ -180,12 +180,20 @@ func runTask(ctx context.Context, d Deps, ta task.Args) (string, error) {
 }
 
 // finish adds a task's result to the chat history so follow-up questions can refer to it.
+// A failure after steps ran keeps the step report in the error, so the chat and CLI show both.
 func (d Deps) finish(res task.Result, err error) (string, error) {
-	if err != nil {
+	if err != nil && len(res.Steps) == 0 {
 		return "", err
 	}
 	md := res.Markdown()
+	if err != nil {
+		err = fmt.Errorf("%w\n\n%s", err, md)
+		md = err.Error()
+	}
 	d.Agent.Remember("/task "+res.Plan.Goal, md)
+	if err != nil {
+		return "", err
+	}
 	return md, nil
 }
 

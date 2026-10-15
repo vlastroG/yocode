@@ -133,3 +133,19 @@ func TestParseArgs(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionSavesStepsWhenRootFails(t *testing.T) {
+	s, llm := newSession(t)
+	llm.chat = script(reply("step one done"), reply("step two done")) // the root call gets an error
+	if err := s.Store.SavePlan(testPlan); err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Replay(context.Background(), testPlan.ID)
+	if err == nil || len(res.Steps) != 2 {
+		t.Fatalf("err = %v, steps = %+v", err, res.Steps)
+	}
+	data, rerr := os.ReadFile(filepath.Join(s.Store.Dir, testPlan.ID+".md"))
+	if rerr != nil || !strings.Contains(string(data), "step two done") {
+		t.Errorf("saved result = %q, %v", data, rerr)
+	}
+}
