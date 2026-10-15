@@ -45,18 +45,10 @@ type Agent struct {
 	// OnToolCall, if set, is called before each tool call so the UI can show progress.
 	OnToolCall func(name string, args map[string]any)
 
-	toolDefs []ollama.Tool
 	history  []ollama.Message
 }
 
 func (a *Agent) Ask(ctx context.Context, question string) (string, error) {
-	if a.toolDefs == nil {
-		defs, err := a.Tools.Tools(ctx)
-		if err != nil {
-			return "", fmt.Errorf("list tools: %w", err)
-		}
-		a.toolDefs = defs
-	}
 	hits, err := a.Docs.Search(ctx, question, docHits)
 	if err != nil {
 		return "", fmt.Errorf("search docs: %w", err)
@@ -66,28 +58,13 @@ func (a *Agent) Ask(ctx context.Context, question string) (string, error) {
 	msgs = append(msgs, a.history...)
 	msgs = append(msgs, ollama.Message{Role: "user", Content: withDocs(question, hits)})
 
-	for range maxSteps {
-		resp, err := a.LLM.Chat(ctx, a.Model, msgs, a.toolDefs)
-		if err != nil {
-			return "", err
-		}
-		msgs = append(msgs, resp)
-		if len(resp.ToolCalls) == 0 {
-			a.Remember(question, resp.Content)
-			return resp.Content, nil
-		}
-		for _, tc := range resp.ToolCalls {
-			if a.OnToolCall != nil {
-				a.OnToolCall(tc.Function.Name, tc.Function.Arguments)
-			}
-			out, err := a.Tools.Call(ctx, tc.Function.Name, tc.Function.Arguments)
-			if err != nil {
-				out = "error: " + err.Error()
-			}
-			msgs = append(msgs, ollama.Message{Role: "tool", Content: out, ToolName: tc.Function.Name})
-		}
+	loop := Loop{LLM: a.LLM, Model: a.Model, Tools: a.Tools, MaxSteps: maxSteps, OnToolCall: a.OnToolCall}
+	answer, err := loop.Run(ctx, msgs)
+	if err != nil {
+		return "", err
 	}
-	return "", fmt.Errorf("no answer after %d tool steps", maxSteps)
+	a.Remember(question, answer)
+	return answer, nil
 }
 
 // Remember adds an exchange to the conversation history: Ask uses it for plain question/answer
