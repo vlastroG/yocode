@@ -40,6 +40,24 @@ services:
       - ${DOCS_PATH:-./.nodocs}:/docs:ro
       - yocode-data:/data
 
+  # Integration tests on a fixture repo against the ollama service: docker compose run --rm itest
+  itest:
+    build:
+      context: .
+      target: itest
+    profiles: [test]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      CHAT_MODEL: ${CHAT_MODEL:-qwen3.5:9b-q4_K_M}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      NUM_CTX: ${NUM_CTX:-16384}
+      THINK: ${THINK:-false}
+      SEED: ${SEED:-42}
+      TASK_MODE: ${TASK_MODE:-subagents}
+
 volumes:
   ollama-models:
   yocode-data:

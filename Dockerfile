@@ -8,6 +8,16 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o /out/yocode ./cmd/yocode \
  && CGO_ENABLED=0 go build -o /out/yocode-mcp ./cmd/yocode-mcp
 
+# Integration tests against the ollama service: docker compose run --rm itest
+FROM build AS itest
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git \
+ && rm -rf /var/lib/apt/lists/* \
+ && git config --system --add safe.directory '*' \
+ && git config --system core.autocrlf true \
+ && git config --system core.fileMode false
+ENTRYPOINT ["go", "test", "-tags", "integration", "-v", "-timeout", "90m", "./internal/integration/"]
+
 FROM debian:bookworm-slim
 # The project is bind-mounted from Windows: trust any owner and normalize line endings and file modes,
 # so `git status` doesn't report every file as modified.

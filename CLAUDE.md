@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - Unit tests (no Docker or Ollama needed): `go test ./...`
 - Single test: `go test ./internal/agent -run '^TestToolCallLoop$'`
+- Integration scenarios (real model on a fixture repo, `internal/integration`, build tag `integration`): `docker compose run --rm itest`; one scenario: `docker compose run --rm --entrypoint go itest test -tags integration -v -timeout 90m -run '^TestTaskFindUsages$' ./internal/integration/`
 - Build/vet: `go build ./... && go vet ./...`
 - Run everything: set `PROJECT_PATH` in `.env`, then `docker compose run --rm yocode` (TUI, needs a real terminal) or `docker compose run --rm -T yocode ask "..."` (works without a TTY)
 - Rebuild the image after Go changes: `docker compose build yocode`
