@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/vlastroG/yocode/internal/agent"
@@ -179,22 +180,30 @@ func runTask(ctx context.Context, d Deps, ta task.Args) (string, error) {
 	if d.Prompt == nil {
 		return plan.Markdown() + planHint, nil
 	}
+	text := plan.Markdown() + promptHint
 	for {
-		reply, err := d.Prompt(plan.Markdown() + promptHint)
+		reply, err := d.Prompt(text)
 		switch {
-		case err != nil:
+		case errors.Is(err, io.EOF):
 			d.Task.Cancel()
 			return "", errors.New("no input: rerun with --yes to run the plan without asking")
+		case err != nil:
+			d.Task.Cancel()
+			return "", fmt.Errorf("read reply: %w", err)
 		case reply == "":
 			return d.finish(d.Task.Approve(ctx))
 		case reply == "q":
 			d.Task.Cancel()
 			return "cancelled", nil
 		}
-		if plan, err = d.Task.Revise(ctx, reply); err != nil {
-			d.Task.Cancel()
-			return "", err
+		revised, err := d.Task.Revise(ctx, reply)
+		if err != nil {
+			// the previous plan is still pending, so the user can retry, run or cancel it
+			text = fmt.Sprintf("Revision failed: %v\n\n", err) + plan.Markdown() + promptHint
+			continue
 		}
+		plan = revised
+		text = plan.Markdown() + promptHint
 	}
 }
 

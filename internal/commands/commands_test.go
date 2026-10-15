@@ -63,6 +63,7 @@ type fakeLLM struct {
 	chats     [][]ollama.Message
 	planCalls int
 	rootErr   error // returned by the call that writes a task's result
+	reviseErr error // returned by plan requests after the first
 }
 
 func (f *fakeLLM) Chat(_ context.Context, _ string, msgs []ollama.Message, _ []ollama.Tool) (ollama.Message, error) {
@@ -75,6 +76,9 @@ func (f *fakeLLM) Chat(_ context.Context, _ string, msgs []ollama.Message, _ []o
 
 func (f *fakeLLM) ChatJSON(_ context.Context, _ string, _ []ollama.Message, _ json.RawMessage, out any) error {
 	f.planCalls++
+	if f.planCalls > 1 && f.reviseErr != nil {
+		return f.reviseErr
+	}
 	return json.Unmarshal([]byte(testPlan), out)
 }
 
@@ -264,5 +268,41 @@ func TestCLIHidesChatOnly(t *testing.T) {
 	}
 	if _, _, err := New(Deps{}).Parse("/revise more"); err == nil || !strings.Contains(err.Error(), "no plan pending") {
 		t.Errorf("/revise without a session: %v", err)
+	}
+}
+
+func TestTaskPromptReviseFailureAsksAgain(t *testing.T) {
+	r := newTaskRig(t)
+	r.llm.reviseErr = errors.New("ollama down")
+	replies := []string{"add a step", ""}
+	var prompts []string
+	r.deps.Prompt = func(text string) (string, error) {
+		prompts = append(prompts, text)
+		if len(replies) == 0 {
+			return "", errors.New("prompted too often")
+		}
+		reply := replies[0]
+		replies = replies[1:]
+		return reply, nil
+	}
+	runCmd(t, New(r.deps), "task", "write", "a", "changelog")
+	if len(prompts) != 2 || !strings.Contains(prompts[1], "ollama down") || !strings.Contains(prompts[1], "Write CHANGELOG") {
+		t.Errorf("prompts = %q", prompts)
+	}
+	if r.runs == 0 {
+		t.Error("the previous plan did not run")
+	}
+}
+
+func TestTaskPromptErrorKeepsCause(t *testing.T) {
+	r := newTaskRig(t)
+	r.deps.Prompt = func(string) (string, error) { return "", errors.New("terminal gone") }
+	c, _ := New(r.deps).Lookup("task")
+	_, err := c.Run(context.Background(), []string{"write", "a", "changelog"})
+	if err == nil || !strings.Contains(err.Error(), "terminal gone") || strings.Contains(err.Error(), "--yes") {
+		t.Errorf("err = %v", err)
+	}
+	if r.runs != 0 || r.deps.Task.Pending() {
+		t.Errorf("runs = %d, pending = %v", r.runs, r.deps.Task.Pending())
 	}
 }
