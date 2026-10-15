@@ -14,6 +14,7 @@ import (
 	"github.com/vlastroG/yocode/internal/config"
 	"github.com/vlastroG/yocode/internal/docs"
 	"github.com/vlastroG/yocode/internal/mcpclient"
+	"github.com/vlastroG/yocode/internal/mcpserver"
 	"github.com/vlastroG/yocode/internal/ollama"
 	"github.com/vlastroG/yocode/internal/rag"
 	"github.com/vlastroG/yocode/internal/review"
@@ -134,9 +135,10 @@ func setup(ctx context.Context, cfg config.Config) (*app, error) {
 	if err != nil {
 		return nil, fmt.Errorf("start MCP server %s: %w", cfg.MCPCommand, err)
 	}
+	readOnly := tools.Only(mcpserver.ReadTools...)
 	return &app{
-		agent: &agent.Agent{LLM: llm, Model: cfg.ChatModel, Tools: tools, Docs: idx},
-		review: &review.Pipeline{LLM: llm, Model: cfg.ChatModel, Tools: tools, Docs: idx,
+		agent: &agent.Agent{LLM: llm, Model: cfg.ChatModel, Tools: readOnly, Docs: idx},
+		review: &review.Pipeline{LLM: llm, Model: cfg.ChatModel, Tools: readOnly, Docs: idx,
 			Language: cfg.ReviewLanguage, MaxFiles: cfg.ReviewMaxFiles},
 		info:  info,
 		close: func() { tools.Close() },

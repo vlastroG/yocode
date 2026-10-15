@@ -108,3 +108,31 @@ func TestBranchComparison(t *testing.T) {
 		t.Error("Log accepted an option as ref")
 	}
 }
+
+func TestGrep(t *testing.T) {
+	ctx := context.Background()
+	dir := testutil.GitRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, "new.go"), []byte("package x\nfunc Hello() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := Repo{Dir: dir}
+
+	out, err := r.Grep(ctx, "hello", "", true, false)
+	if err != nil || !strings.Contains(out, "README.md:1:") || !strings.Contains(out, "new.go:") {
+		t.Errorf("ignore-case grep = %q, %v", out, err)
+	}
+	out, err = r.Grep(ctx, "nomatch-xyz", "", false, false)
+	if err != nil || out != "(no matches)" {
+		t.Errorf("no-match grep = %q, %v", out, err)
+	}
+	out, err = r.Grep(ctx, "H.llo", "", false, true)
+	if err != nil || !strings.Contains(out, "new.go:") {
+		t.Errorf("regex grep = %q, %v", out, err)
+	}
+	if _, err := r.Grep(ctx, "", "", false, false); err == nil {
+		t.Error("Grep accepted an empty pattern")
+	}
+	if _, err := r.Grep(ctx, "x", "../..", false, false); err == nil {
+		t.Error("Grep accepted a path outside the project")
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os/exec"
 	"strings"
 
@@ -71,4 +72,40 @@ func (c *Client) Call(ctx context.Context, name string, args map[string]any) (st
 		return "", errors.New(b.String())
 	}
 	return b.String(), nil
+}
+
+// View exposes a subset of a client's tools.
+type View struct {
+	c     *Client
+	names map[string]bool
+}
+
+// Only returns a view limited to the named tools, for both listing and calling.
+func (c *Client) Only(names ...string) *View {
+	set := make(map[string]bool, len(names))
+	for _, n := range names {
+		set[n] = true
+	}
+	return &View{c: c, names: set}
+}
+
+func (v *View) Tools(ctx context.Context) ([]ollama.Tool, error) {
+	all, err := v.c.Tools(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var tools []ollama.Tool
+	for _, t := range all {
+		if v.names[t.Function.Name] {
+			tools = append(tools, t)
+		}
+	}
+	return tools, nil
+}
+
+func (v *View) Call(ctx context.Context, name string, args map[string]any) (string, error) {
+	if !v.names[name] {
+		return "", fmt.Errorf("tool %q is not available here", name)
+	}
+	return v.c.Call(ctx, name, args)
 }

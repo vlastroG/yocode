@@ -143,11 +143,49 @@ func escapes(rel string) bool {
 	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// Grep searches tracked and untracked (not ignored) text files, returning "path:line:text" lines.
+func (r Repo) Grep(ctx context.Context, pattern, path string, ignoreCase, regex bool) (string, error) {
+	if pattern == "" {
+		return "", errors.New("pattern is required")
+	}
+	args := []string{"grep", "-n", "-I", "--untracked", "--no-color"}
+	if ignoreCase {
+		args = append(args, "-i")
+	}
+	if regex {
+		args = append(args, "-E")
+	} else {
+		args = append(args, "-F")
+	}
+	args = append(args, "-e", pattern)
+	if path != "" {
+		p, err := relPath(path)
+		if err != nil {
+			return "", err
+		}
+		args = append(args, "--", p)
+	}
+	out, err := r.gitCmd(ctx, args...).Output()
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && ee.ExitCode() == 1 && len(bytes.TrimSpace(ee.Stderr)) == 0 {
+		return "(no matches)", nil
+	}
+	return r.result(args, out, err)
+}
+
 func (r Repo) git(ctx context.Context, args ...string) (string, error) {
+	out, err := r.gitCmd(ctx, args...).Output()
+	return r.result(args, out, err)
+}
+
+func (r Repo) gitCmd(ctx context.Context, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", r.Dir, "--no-pager"}, args...)...)
 	// No index refresh writes (the project is mounted read-only), never prompt.
 	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
-	out, err := cmd.Output()
+	return cmd
+}
+
+func (r Repo) result(args []string, out []byte, err error) (string, error) {
 	if err != nil {
 		var ee *exec.ExitError
 		msg := ""

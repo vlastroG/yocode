@@ -34,6 +34,21 @@ type fileArgs struct {
 	Path string `json:"path" jsonschema:"file path relative to the project root"`
 }
 
+type grepArgs struct {
+	Pattern    string `json:"pattern" jsonschema:"text to search for (a regular expression when regex is true)"`
+	Path       string `json:"path,omitempty" jsonschema:"limit the search to this file or directory"`
+	IgnoreCase bool   `json:"ignore_case,omitempty" jsonschema:"match case-insensitively"`
+	Regex      bool   `json:"regex,omitempty" jsonschema:"treat pattern as an extended regular expression instead of plain text"`
+}
+
+// Tool subsets for consumers that get only part of the toolbox.
+var (
+	ReadTools = []string{"git_status", "git_log", "git_diff", "git_changed_files", "git_branch", "list_files", "read_file", "grep"}
+	// EditTools and GitWriteTools are filled in as the tools get registered.
+	EditTools     []string
+	GitWriteTools []string
+)
+
 func New(repo gittools.Repo) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "yocode-git", Version: "0.1.0"}, nil)
 	add(s, "git_status", "Show the working tree status (short format) and the current branch.",
@@ -50,6 +65,10 @@ func New(repo gittools.Repo) *mcp.Server {
 		func(ctx context.Context, a dirArgs) (string, error) { return repo.ListFiles(ctx, a.Path) })
 	add(s, "read_file", "Read a text file from the project.",
 		func(_ context.Context, a fileArgs) (string, error) { return repo.ReadFile(a.Path) })
+	add(s, "grep", "Search file contents (git grep): returns path:line:text for each match. Use it to find where a symbol, API or string is used.",
+		func(ctx context.Context, a grepArgs) (string, error) {
+			return repo.Grep(ctx, a.Pattern, a.Path, a.IgnoreCase, a.Regex)
+		})
 	return s
 }
 
