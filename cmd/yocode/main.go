@@ -94,7 +94,7 @@ func run(name string, args []string) error {
 	}
 	defer app.close()
 
-	d := commands.Deps{Agent: app.agent, Review: app.review, Task: app.task}
+	d := commands.Deps{Agent: app.agent, Review: app.review, Task: app.task, Tools: app.readOnly}
 	if name == "" || name == "chat" {
 		return tui.Run(d, app.info)
 	}
@@ -128,11 +128,12 @@ func stdinPrompt(in *bufio.Reader) func(string) (string, error) {
 }
 
 type app struct {
-	agent  *agent.Agent
-	review *review.Pipeline
-	task   *task.Session
-	info   string
-	close  func()
+	agent    *agent.Agent
+	review   *review.Pipeline
+	task     *task.Session
+	readOnly agent.Tools
+	info     string
+	close    func()
 }
 
 // setup pulls missing models, builds or reuses the docs index and starts the MCP server.
@@ -178,6 +179,7 @@ func setup(ctx context.Context, cfg config.Config) (*app, error) {
 		agent: &agent.Agent{LLM: llm, Model: cfg.ChatModel, Tools: readOnly, Docs: idx},
 		review: &review.Pipeline{LLM: llm, Model: cfg.ChatModel, Tools: readOnly, Docs: idx,
 			Language: cfg.ReviewLanguage, MaxFiles: cfg.ReviewMaxFiles},
+		readOnly: readOnly,
 		task: &task.Session{
 			Planner: &task.Planner{LLM: llm, Model: cfg.ChatModel, Tools: readOnly, Docs: idx},
 			Executor: &task.Executor{LLM: llm, Model: cfg.ChatModel, Single: cfg.TaskSingle,

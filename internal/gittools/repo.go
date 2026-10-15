@@ -21,7 +21,7 @@ type Repo struct {
 }
 
 func (r Repo) Status(ctx context.Context) (string, error) {
-	return r.git(ctx, "status", "--short", "--branch")
+	return r.git(ctx, "status", "--short", "--branch", "--untracked-files=all")
 }
 
 // Log shows commits of ref (a branch, commit or range such as main..feature; empty = HEAD),

@@ -25,7 +25,7 @@ const (
 
 // labelColors gives some command results their own bar color; others use replyColor.
 var labelColors = map[string]lipgloss.Color{
-	"review": lipgloss.Color("11"), "warning": lipgloss.Color("11"),
+	"review": lipgloss.Color("11"), "warning": lipgloss.Color("11"), "diff": lipgloss.Color("14"),
 	"plan": lipgloss.Color("13"), "task": lipgloss.Color("13"),
 }
 
@@ -245,7 +245,11 @@ func render(log []entry, width int) string {
 			if !ok {
 				color = replyColor
 			}
-			b.WriteString(block(e.label, e.text, color, width))
+			text := e.text
+			if e.label == "diff" {
+				text = colorDiff(text, width-3)
+			}
+			b.WriteString(block(e.label, text, color, width))
 		case errEntry:
 			label, color := "error", errColor
 			if e.label != "" {

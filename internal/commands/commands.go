@@ -47,6 +47,8 @@ type Deps struct {
 	Agent  *agent.Agent
 	Review *review.Pipeline
 	Task   *task.Session
+	// Tools is the read-only view used by diff.
+	Tools agent.Tools
 	// Prompt asks the user on the terminal (CLI only); nil in the chat, which uses /go and /cancel.
 	Prompt func(text string) (string, error)
 }
@@ -105,6 +107,23 @@ func New(d Deps) Set {
 				return runTask(ctx, d, ta)
 			},
 			label: d.taskLabel,
+		},
+		{
+			Name: "diff", Args: "[path]", Label: "diff",
+			Help: "show uncommitted changes (including new files)",
+			Check: func(args []string) error {
+				if len(args) > 1 {
+					return errors.New("usage: diff [path]")
+				}
+				return nil
+			},
+			Run: func(ctx context.Context, args []string) (string, error) {
+				path := ""
+				if len(args) > 0 {
+					path = args[0]
+				}
+				return WorkingDiff(ctx, d.Tools, path)
+			},
 		},
 		{
 			Name: "revise", Args: "<correction>", Label: "plan", ChatOnly: true,
