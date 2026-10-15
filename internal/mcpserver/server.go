@@ -45,6 +45,16 @@ type editArgs struct {
 	NewText string `json:"new_text" jsonschema:"replacement text"`
 }
 
+type branchArgs struct {
+	Name string `json:"name" jsonschema:"new branch name, e.g. feature/docs-update"`
+	From string `json:"from,omitempty" jsonschema:"branch or commit to start from; empty means the current HEAD"`
+}
+
+type commitArgs struct {
+	Message string   `json:"message" jsonschema:"commit message"`
+	Paths   []string `json:"paths,omitempty" jsonschema:"files to commit, relative to the project root; empty means all changes"`
+}
+
 type grepArgs struct {
 	Pattern    string `json:"pattern" jsonschema:"text to search for (a regular expression when regex is true)"`
 	Path       string `json:"path,omitempty" jsonschema:"limit the search to this file or directory"`
@@ -56,8 +66,7 @@ type grepArgs struct {
 var (
 	ReadTools = []string{"git_status", "git_log", "git_diff", "git_changed_files", "git_branch", "list_files", "read_file", "grep"}
 	EditTools = []string{"write_file", "edit_file", "delete_file"}
-	// GitWriteTools is filled in as the tools get registered.
-	GitWriteTools []string
+	GitWriteTools = []string{"git_create_branch", "git_commit"}
 )
 
 func New(repo gittools.Repo) *mcp.Server {
@@ -86,6 +95,10 @@ func New(repo gittools.Repo) *mcp.Server {
 		func(_ context.Context, a editArgs) (string, error) { return repo.EditFile(a.Path, a.OldText, a.NewText) })
 	add(s, "delete_file", "Delete a file.",
 		func(_ context.Context, a fileArgs) (string, error) { return repo.DeleteFile(a.Path) })
+	add(s, "git_create_branch", "Create a local branch and switch to it.",
+		func(ctx context.Context, a branchArgs) (string, error) { return repo.CreateBranch(ctx, a.Name, a.From) })
+	add(s, "git_commit", "Stage changes (all, or only the given paths) and commit them locally. Pushing is left to the user.",
+		func(ctx context.Context, a commitArgs) (string, error) { return repo.Commit(ctx, a.Message, a.Paths) })
 	return s
 }
 

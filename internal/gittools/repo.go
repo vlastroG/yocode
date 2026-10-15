@@ -180,7 +180,7 @@ func (r Repo) git(ctx context.Context, args ...string) (string, error) {
 
 func (r Repo) gitCmd(ctx context.Context, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", r.Dir, "--no-pager"}, args...)...)
-	// No index refresh writes (the project is mounted read-only), never prompt.
+	// optional locks stay off so reads never write the index; never prompt.
 	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
 	return cmd
 }
