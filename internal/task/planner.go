@@ -122,16 +122,25 @@ func planProblems(goal string, p Plan) []string {
 	return problems
 }
 
-var goalPath = regexp.MustCompile(`[A-Za-z0-9_][\w./-]*\.[a-z][a-z0-9]{0,4}\b`)
+var (
+	goalPath = regexp.MustCompile(`[A-Za-z0-9_][\w./-]*\.([a-z][a-z0-9]{0,4})\b`)
+	fileExts = map[string]bool{"md": true, "go": true, "txt": true, "json": true, "yaml": true, "yml": true,
+		"toml": true, "cs": true, "py": true, "js": true, "ts": true}
+)
 
-// missingPaths returns the file paths named in the goal that no step mentions.
+// missingPaths returns the file paths named in the goal that no step mentions. A path has a "/"
+// or a known extension, so "e.g" or "github.com" don't count.
 func missingPaths(goal string, p Plan) []string {
 	var text strings.Builder
 	for _, s := range p.Steps {
 		text.WriteString(s.Title + "\n" + s.Instructions + "\n")
 	}
 	var missing []string
-	for _, path := range goalPath.FindAllString(goal, -1) {
+	for _, m := range goalPath.FindAllStringSubmatch(goal, -1) {
+		path := m[0]
+		if !strings.Contains(path, "/") && !fileExts[m[1]] {
+			continue
+		}
 		if !strings.Contains(text.String(), path) {
 			missing = append(missing, path)
 		}
@@ -139,7 +148,7 @@ func missingPaths(goal string, p Plan) []string {
 	return missing
 }
 
-// Revise replans from the task history (goal, notes, then plan/correction pairs) and the new
+// Revise replans from the task history (notes, goal, then plan/correction pairs) and the new
 // feedback, without exploring again. The caller sets the plan's Goal.
 func (p *Planner) Revise(ctx context.Context, history []ollama.Message, feedback string) (Plan, error) {
 	msgs := append(append([]ollama.Message(nil), history...), ollama.Message{Role: "user", Content: feedback})

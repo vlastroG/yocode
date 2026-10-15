@@ -21,7 +21,7 @@ type Session struct {
 
 	mu      sync.Mutex
 	goal    string
-	history []ollama.Message // goal, notes, then plan/correction pairs
+	history []ollama.Message // notes, goal, then plan/correction pairs
 	pending *Plan
 }
 
@@ -94,11 +94,16 @@ func (s *Session) Cancel() bool {
 	return had
 }
 
-// Replay runs a saved plan again without planning; it also closes any open task.
+// Replay runs a saved plan again without planning, saving it and its result under a new id;
+// it also closes any open task.
 func (s *Session) Replay(ctx context.Context, id string) (Result, error) {
 	plan, err := s.Store.LoadPlan(id)
 	if err != nil {
 		return Result{}, err
+	}
+	plan.ID = s.Store.ReplayID(id)
+	if err := s.Store.SavePlan(plan); err != nil {
+		return Result{}, fmt.Errorf("save plan: %w", err)
 	}
 	s.mu.Lock()
 	s.clear()

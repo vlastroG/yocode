@@ -32,11 +32,19 @@ func (s Store) NewID(goal string) string {
 	if slug == "" {
 		slug = "task"
 	}
-	now := time.Now
+	return s.now().Format("20060102-150405") + "-" + slug
+}
+
+// ReplayID returns "<id>-replay-<yyyymmdd-hhmmss>", so a replay never overwrites the original run.
+func (s Store) ReplayID(id string) string {
+	return id + "-replay-" + s.now().Format("20060102-150405")
+}
+
+func (s Store) now() time.Time {
 	if s.Now != nil {
-		now = s.Now
+		return s.Now()
 	}
-	return now().Format("20060102-150405") + "-" + slug
+	return time.Now()
 }
 
 func (s Store) SavePlan(p Plan) error {
@@ -59,6 +67,10 @@ func (s Store) LoadPlan(id string) (Plan, error) {
 	if err := json.Unmarshal(data, &p); err != nil {
 		return Plan{}, fmt.Errorf("load plan %s: %w", id, err)
 	}
+	if err := validate(p); err != nil {
+		return Plan{}, fmt.Errorf("load plan %s: %w", id, err)
+	}
+	p.ID = id
 	return p, nil
 }
 

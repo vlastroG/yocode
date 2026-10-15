@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -169,5 +170,13 @@ func TestPlanProblemsAsksToMergeReadSteps(t *testing.T) {
 	p.Steps = p.Steps[:2]
 	if got := planProblems("find X", p); len(got) != 0 {
 		t.Errorf("a read-only goal: problems = %q", got)
+	}
+}
+
+func TestMissingPathsIgnoresNonFiles(t *testing.T) {
+	goal := "e.g. update docs/guide.md, i.e. the guide from github.com; also notes.txt and the config.yaml"
+	got := missingPaths(goal, Plan{Steps: []Step{{Title: "t", Instructions: "edit config.yaml"}}})
+	if want := []string{"docs/guide.md", "notes.txt"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("missing = %q, want %q", got, want)
 	}
 }

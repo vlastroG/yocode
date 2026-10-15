@@ -108,8 +108,17 @@ func TestSessionReplay(t *testing.T) {
 	if len(res.Steps) != 2 {
 		t.Errorf("steps = %+v", res.Steps)
 	}
-	if _, err := os.Stat(filepath.Join(s.Store.Dir, testPlan.ID+".md")); err != nil {
-		t.Error(err)
+	const replayID = "p1-replay-20261015-143000"
+	if res.Plan.ID != replayID || !strings.Contains(res.Markdown(), replayID) {
+		t.Errorf("result id = %q:\n%s", res.Plan.ID, res.Markdown())
+	}
+	for _, ext := range []string{".json", ".md"} {
+		if _, err := os.Stat(filepath.Join(s.Store.Dir, replayID+ext)); err != nil {
+			t.Error(err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(s.Store.Dir, testPlan.ID+".md")); !os.IsNotExist(err) {
+		t.Errorf("the original result was written: %v", err)
 	}
 }
 
@@ -144,7 +153,7 @@ func TestSessionSavesStepsWhenRootFails(t *testing.T) {
 	if err == nil || len(res.Steps) != 2 {
 		t.Fatalf("err = %v, steps = %+v", err, res.Steps)
 	}
-	data, rerr := os.ReadFile(filepath.Join(s.Store.Dir, testPlan.ID+".md"))
+	data, rerr := os.ReadFile(filepath.Join(s.Store.Dir, res.Plan.ID+".md"))
 	if rerr != nil || !strings.Contains(string(data), "step two done") {
 		t.Errorf("saved result = %q, %v", data, rerr)
 	}

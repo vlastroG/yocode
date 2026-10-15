@@ -1,7 +1,10 @@
 package task
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -41,5 +44,21 @@ func TestSaveLoadPlan(t *testing.T) {
 func TestLoadPlanRejectsBadID(t *testing.T) {
 	if _, err := testStore(t).LoadPlan("../x"); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestLoadPlanValidatesAndSetsID(t *testing.T) {
+	s := testStore(t)
+	if err := os.WriteFile(filepath.Join(s.Dir, "renamed.json"), []byte(`{"id":"other","goal":"g","steps":[{"title":"a","access":"read"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if p, err := s.LoadPlan("renamed"); err != nil || p.ID != "renamed" {
+		t.Errorf("plan = %+v, %v", p, err)
+	}
+	if err := os.WriteFile(filepath.Join(s.Dir, "empty.json"), []byte(`{"id":"empty","goal":"g","steps":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.LoadPlan("empty"); err == nil || !strings.Contains(err.Error(), "no steps") {
+		t.Errorf("err = %v", err)
 	}
 }
