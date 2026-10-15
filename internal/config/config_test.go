@@ -14,17 +14,20 @@ func TestDefaults(t *testing.T) {
 	if c.OllamaURL != "http://localhost:11434" {
 		t.Errorf("OllamaURL = %q", c.OllamaURL)
 	}
-	if c.ChatModel != "qwen2.5:7b" || c.EmbedModel != "bge-m3" {
+	if c.ChatModel != "qwen3.5:9b-q4_K_M" || c.EmbedModel != "bge-m3" {
 		t.Errorf("models = %q, %q", c.ChatModel, c.EmbedModel)
 	}
 	if c.ProjectDir != "/project" || c.DocsDir != "/docs" || c.DataDir != "/data" {
 		t.Errorf("dirs = %q %q %q", c.ProjectDir, c.DocsDir, c.DataDir)
 	}
-	if c.MCPCommand != "yocode-mcp" || c.NumCtx != 8192 || c.Reindex {
+	if c.MCPCommand != "yocode-mcp" || c.NumCtx != 16384 || c.Reindex {
 		t.Errorf("mcp=%q numctx=%d reindex=%v", c.MCPCommand, c.NumCtx, c.Reindex)
 	}
 	if !strings.HasPrefix(c.IndexKey, "docs-") {
 		t.Errorf("IndexKey = %q", c.IndexKey)
+	}
+	if c.Seed != 42 || c.Think != nil || c.TaskSingle {
+		t.Errorf("seed=%d think=%v single=%v", c.Seed, c.Think, c.TaskSingle)
 	}
 	if c.ReviewLanguage != "English" || c.ReviewMaxFiles != 25 {
 		t.Errorf("review settings = %q, %d", c.ReviewLanguage, c.ReviewMaxFiles)
@@ -65,5 +68,16 @@ func TestIndexKeyDependsOnDocsAndModel(t *testing.T) {
 	otherModel := FromEnv(env(map[string]string{"PROJECT_HOST_PATH": "c:/foo", "EMBED_MODEL": "mxbai-embed-large"}))
 	if base.IndexKey == withDocs.IndexKey || base.IndexKey == otherModel.IndexKey {
 		t.Errorf("keys should differ: %q %q %q", base.IndexKey, withDocs.IndexKey, otherModel.IndexKey)
+	}
+}
+
+func TestSeedThinkTaskMode(t *testing.T) {
+	c := FromEnv(env(map[string]string{"THINK": "false", "SEED": "0", "TASK_MODE": "single"}))
+	if c.Think == nil || *c.Think || c.Seed != 0 || !c.TaskSingle {
+		t.Errorf("think=%v seed=%d single=%v", c.Think, c.Seed, c.TaskSingle)
+	}
+	c = FromEnv(env(map[string]string{"THINK": "true", "TASK_MODE": "other"}))
+	if c.Think == nil || !*c.Think || c.TaskSingle {
+		t.Errorf("think=%v single=%v", c.Think, c.TaskSingle)
 	}
 }

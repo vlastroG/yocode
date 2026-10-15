@@ -25,7 +25,11 @@ const configHelp = `
 Configuration (environment; with docker compose set these in .env):
   PROJECT_PATH     host path of the project (mounted read-only at /project)
   DOCS_PATH        optional host path of a separate docs project (mounted at /docs)
-  CHAT_MODEL       Ollama chat model (default qwen2.5:7b)
+  CHAT_MODEL       Ollama chat model (default qwen3.5:9b-q4_K_M)
+  SEED             sampling seed for reproducible runs, 0 disables (default 42)
+  THINK            true/false to enable/disable model thinking (default: model's own)
+  NUM_CTX          chat context window in tokens (default 16384)
+  TASK_MODE        subagents (default) or single: how task steps run
   EMBED_MODEL      Ollama embedding model (default bge-m3)
   REVIEW_LANGUAGE  language of review reports (default English)
   REVIEW_MAX_FILES files a review may cover; more stops with a warning (default 25)
@@ -106,7 +110,7 @@ type app struct {
 
 // setup pulls missing models, builds or reuses the docs index and starts the MCP server.
 func setup(ctx context.Context, cfg config.Config) (*app, error) {
-	llm := &ollama.Client{BaseURL: cfg.OllamaURL, NumCtx: cfg.NumCtx}
+	llm := &ollama.Client{BaseURL: cfg.OllamaURL, NumCtx: cfg.NumCtx, Seed: cfg.Seed, Think: cfg.Think}
 	if err := llm.EnsureModels(ctx, os.Stderr, cfg.ChatModel, cfg.EmbedModel); err != nil {
 		return nil, fmt.Errorf("ollama at %s: %w", cfg.OllamaURL, err)
 	}

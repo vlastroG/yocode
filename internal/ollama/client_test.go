@@ -123,3 +123,62 @@ func TestChatJSONRejectsInvalidReply(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func recordChat(t *testing.T, c *Client) map[string]any {
+	t.Helper()
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		io.WriteString(w, `{"message":{"role":"assistant","content":"{}"},"done":true}`)
+	}))
+	defer srv.Close()
+	c.BaseURL = srv.URL
+	if _, err := c.Chat(context.Background(), "m", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+
+func TestChatSeedAndThink(t *testing.T) {
+	f := false
+	body := recordChat(t, &Client{Seed: 42, Think: &f})
+	opts, _ := body["options"].(map[string]any)
+	if opts["seed"] != float64(42) || opts["temperature"] != float64(0) {
+		t.Errorf("options = %v", opts)
+	}
+	if v, ok := body["think"]; !ok || v != false {
+		t.Errorf("think = %v (present %v)", v, ok)
+	}
+}
+
+func TestChatZeroClientSendsNoSeedOrThink(t *testing.T) {
+	body := recordChat(t, &Client{})
+	if _, ok := body["think"]; ok {
+		t.Error("think should be absent")
+	}
+	if opts, ok := body["options"].(map[string]any); ok {
+		if _, has := opts["seed"]; has {
+			t.Error("seed should be absent")
+		}
+	}
+}
+
+func TestChatJSONSeedKeepsTemperatureZero(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&body)
+		io.WriteString(w, `{"message":{"role":"assistant","content":"{}"},"done":true}`)
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, Seed: 7}
+	var out map[string]any
+	if err := c.ChatJSON(context.Background(), "m", nil, json.RawMessage(`{}`), &out); err != nil {
+		t.Fatal(err)
+	}
+	opts := body["options"].(map[string]any)
+	if opts["seed"] != float64(7) || opts["temperature"] != float64(0) {
+		t.Errorf("options = %v", opts)
+	}
+}

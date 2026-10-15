@@ -13,6 +13,10 @@ type Config struct {
 	ChatModel  string
 	EmbedModel string
 	NumCtx     int
+	Seed       int   // > 0 makes chat requests deterministic; 0 disables
+	Think      *bool // nil = leave to the model's default
+
+	TaskSingle bool // TASK_MODE=single: one conversation for all task steps
 
 	ProjectDir string // project mount inside the container
 	DocsDir    string // optional separate docs mount inside the container
@@ -37,9 +41,11 @@ func FromEnv(getenv func(string) string) Config {
 	}
 	c := Config{
 		OllamaURL:      strings.TrimRight(get("OLLAMA_URL", "http://localhost:11434"), "/"),
-		ChatModel:      get("CHAT_MODEL", "qwen2.5:7b"),
+		ChatModel:      get("CHAT_MODEL", "qwen3.5:9b-q4_K_M"),
 		EmbedModel:     get("EMBED_MODEL", "bge-m3"),
-		NumCtx:         8192,
+		NumCtx:         16384,
+		Seed:           42,
+		TaskSingle:     getenv("TASK_MODE") == "single",
 		ProjectDir:     get("PROJECT_DIR", "/project"),
 		DocsDir:        get("DOCS_DIR", "/docs"),
 		DataDir:        get("DATA_DIR", "/data"),
@@ -50,6 +56,13 @@ func FromEnv(getenv func(string) string) Config {
 	}
 	if n, err := strconv.Atoi(getenv("NUM_CTX")); err == nil && n > 0 {
 		c.NumCtx = n
+	}
+	if n, err := strconv.Atoi(getenv("SEED")); err == nil && n >= 0 {
+		c.Seed = n
+	}
+	if v := strings.TrimSpace(getenv("THINK")); v != "" {
+		b := parseBool(v)
+		c.Think = &b
 	}
 	if n, err := strconv.Atoi(getenv("REVIEW_MAX_FILES")); err == nil && n > 0 {
 		c.ReviewMaxFiles = n

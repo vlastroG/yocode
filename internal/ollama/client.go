@@ -15,6 +15,8 @@ import (
 type Client struct {
 	BaseURL string       // e.g. http://ollama:11434
 	NumCtx  int          // context window passed to chat requests; 0 = Ollama default
+	Seed    int          // > 0 makes chat requests deterministic (seed + temperature 0)
+	Think   *bool        // non-nil is sent as Ollama's "think" setting
 	HTTP    *http.Client // nil = http.DefaultClient (no timeout: pulls are slow)
 }
 
@@ -52,13 +54,26 @@ type chatRequest struct {
 	Format   json.RawMessage `json:"format,omitempty"` // JSON schema the reply must follow
 	Stream   bool            `json:"stream"`
 	Options  map[string]any  `json:"options,omitempty"`
+	Think    *bool           `json:"think,omitempty"`
+}
+
+func (c *Client) options() map[string]any {
+	opts := map[string]any{}
+	if c.NumCtx > 0 {
+		opts["num_ctx"] = c.NumCtx
+	}
+	if c.Seed > 0 {
+		opts["seed"] = c.Seed
+		opts["temperature"] = 0
+	}
+	if len(opts) == 0 {
+		return nil
+	}
+	return opts
 }
 
 func (c *Client) Chat(ctx context.Context, model string, msgs []Message, tools []Tool) (Message, error) {
-	req := chatRequest{Model: model, Messages: msgs, Tools: tools}
-	if c.NumCtx > 0 {
-		req.Options = map[string]any{"num_ctx": c.NumCtx}
-	}
+	req := chatRequest{Model: model, Messages: msgs, Tools: tools, Options: c.options(), Think: c.Think}
 	var resp struct {
 		Message Message `json:"message"`
 	}
@@ -69,10 +84,12 @@ func (c *Client) Chat(ctx context.Context, model string, msgs []Message, tools [
 // ChatJSON asks for a reply that follows the JSON schema and decodes it into out. Ollama
 // constrains generation to the schema, so even small models return parseable JSON.
 func (c *Client) ChatJSON(ctx context.Context, model string, msgs []Message, schema json.RawMessage, out any) error {
-	req := chatRequest{Model: model, Messages: msgs, Format: schema, Options: map[string]any{"temperature": 0}}
-	if c.NumCtx > 0 {
-		req.Options["num_ctx"] = c.NumCtx
+	opts := c.options()
+	if opts == nil {
+		opts = map[string]any{}
 	}
+	opts["temperature"] = 0
+	req := chatRequest{Model: model, Messages: msgs, Format: schema, Options: opts, Think: c.Think}
 	var resp struct {
 		Message Message `json:"message"`
 	}
