@@ -9,12 +9,16 @@ import (
 )
 
 // WriteFile creates a file, with its parent directories, or replaces its whole content.
+// Replacing a CRLF file keeps CRLF.
 func (r Repo) WriteFile(path, content string) (string, error) {
 	full, p, err := r.writablePath(path)
 	if err != nil {
 		return "", err
 	}
-	_, statErr := os.Stat(full)
+	old, statErr := os.ReadFile(full)
+	if statErr == nil && bytes.Contains(old, []byte("\r\n")) {
+		content = toCRLF(content)
+	}
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return "", err
 	}
@@ -82,7 +86,7 @@ func (r Repo) DeleteFile(path string) (string, error) {
 }
 
 // writablePath returns the absolute and the project-relative path of a file that may be modified:
-// inside the project (symlinks resolved) and not under .git.
+// inside the project (symlinks resolved) and not in any .git directory.
 func (r Repo) writablePath(path string) (full, rel string, err error) {
 	rel, err = relPath(path)
 	if err != nil {
@@ -91,8 +95,10 @@ func (r Repo) writablePath(path string) (full, rel string, err error) {
 	if rel == "." {
 		return "", "", fmt.Errorf("path %q is not a file", path)
 	}
-	if strings.EqualFold(strings.SplitN(rel, "/", 2)[0], ".git") {
-		return "", "", fmt.Errorf("path %q is inside .git, which is off limits", path)
+	for _, seg := range strings.Split(rel, "/") {
+		if strings.EqualFold(seg, ".git") {
+			return "", "", fmt.Errorf("path %q is inside .git, which is off limits", path)
+		}
 	}
 	root, err := filepath.EvalSymlinks(r.Dir)
 	if err != nil {
@@ -115,7 +121,7 @@ func (r Repo) writablePath(path string) (full, rel string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	if r, err := filepath.Rel(root, resolved); err != nil || escapes(r) {
+	if inside, err := filepath.Rel(root, resolved); err != nil || escapes(inside) {
 		return "", "", fmt.Errorf("path %q is outside the project", path)
 	}
 	return full, rel, nil

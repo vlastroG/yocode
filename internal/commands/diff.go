@@ -45,9 +45,10 @@ func WorkingDiff(ctx context.Context, tools agent.Tools, path string) (string, e
 		if err != nil {
 			if strings.Contains(err.Error(), "binary file") {
 				fmt.Fprintf(&b, "Binary file %s added\n", p)
-				continue
+			} else {
+				fmt.Fprintf(&b, "New file %s: cannot read it: %v\n", p, err)
 			}
-			return "", err
+			continue
 		}
 		b.WriteString(newFileDiff(p, content))
 	}

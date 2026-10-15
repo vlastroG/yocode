@@ -68,3 +68,32 @@ func TestCreateBranchAndCommit(t *testing.T) {
 		t.Error("escaping path should fail")
 	}
 }
+
+func TestCommitPathsLeavesStagedWork(t *testing.T) {
+	dir := testutil.GitRepo(t)
+	ctx := context.Background()
+	for _, f := range []string{"user.txt", "task.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte(f+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	testutil.Git(t, dir, "add", "user.txt")
+	// a hook must not run inside yocode's commits
+	hook := filepath.Join(dir, ".git", "hooks", "pre-commit")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	testutil.Git(t, dir, "config", "commit.gpgsign", "true")
+	if _, err := (Repo{Dir: dir}).Commit(ctx, "task", []string{"task.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := gitOut(t, dir, "show", "--name-only", "--pretty=format:", "HEAD"); got != "task.txt" {
+		t.Errorf("committed = %q", got)
+	}
+	if got := gitOut(t, dir, "status", "--short"); got != "A  user.txt" {
+		t.Errorf("status = %q", got)
+	}
+	if _, err := (Repo{Dir: dir}).Commit(ctx, "again", []string{"task.txt"}); err == nil || !strings.Contains(err.Error(), "nothing to commit") {
+		t.Errorf("err = %v", err)
+	}
+}

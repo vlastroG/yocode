@@ -179,7 +179,9 @@ func (r Repo) git(ctx context.Context, args ...string) (string, error) {
 }
 
 func (r Repo) gitCmd(ctx context.Context, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", r.Dir, "--no-pager"}, args...)...)
+	// quotePath off keeps non-ASCII paths readable and usable as tool arguments
+	base := []string{"-C", r.Dir, "--no-pager", "-c", "core.quotePath=false", "-c", "commit.gpgsign=false"}
+	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
 	// optional locks stay off so reads never write the index; never prompt.
 	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
 	return cmd

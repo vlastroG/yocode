@@ -52,7 +52,7 @@ type branchArgs struct {
 
 type commitArgs struct {
 	Message string   `json:"message" jsonschema:"commit message"`
-	Paths   []string `json:"paths,omitempty" jsonschema:"files to commit, relative to the project root; empty means all changes"`
+	Paths   []string `json:"paths,omitempty" jsonschema:"files the task changed, relative to the project root; empty commits all changes"`
 }
 
 type grepArgs struct {
@@ -97,7 +97,8 @@ func New(repo gittools.Repo) *mcp.Server {
 		func(_ context.Context, a fileArgs) (string, error) { return repo.DeleteFile(a.Path) })
 	add(s, "git_create_branch", "Create a local branch and switch to it.",
 		func(ctx context.Context, a branchArgs) (string, error) { return repo.CreateBranch(ctx, a.Name, a.From) })
-	add(s, "git_commit", "Stage changes (all, or only the given paths) and commit them locally. Pushing is left to the user.",
+	add(s, "git_commit", "Commit locally. Always pass paths: the files the task changed; only they are staged and committed, other staged changes stay out. "+
+		"Without paths every change in the working tree is staged and committed. Pushing is left to the user.",
 		func(ctx context.Context, a commitArgs) (string, error) { return repo.Commit(ctx, a.Message, a.Paths) })
 	return s
 }

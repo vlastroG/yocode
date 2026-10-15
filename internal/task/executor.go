@@ -15,6 +15,7 @@ const stepRules = `- Use the tools yourself. Never ask the user to do anything.
 - Read a file before editing it. Prefer edit_file over rewriting a whole file; create new files with write_file.
 - A file the plan names that doesn't exist yet is to be created: never change a similarly named file instead.
 - Text you write from tool output keeps its exact wording: quote commit messages, identifiers, paths and line numbers.
+- When committing, pass git_commit the paths of the files the task changed.
 - Never pull or push: the user does that.
 - Finish with a short summary of what you changed (file paths) or what you found.`
 

@@ -77,7 +77,7 @@ func TestEditFilePreservesCRLF(t *testing.T) {
 func TestWritesRejectUnsafePaths(t *testing.T) {
 	dir := testutil.GitRepo(t)
 	r := Repo{Dir: dir}
-	for _, p := range []string{".git/config", ".GIT/x", "../x", "/etc/x"} {
+	for _, p := range []string{".git/config", ".GIT/x", "sub/.git/config", "a/.Git/b", "../x", "/etc/x"} {
 		if _, err := r.WriteFile(p, "x"); err == nil {
 			t.Errorf("WriteFile(%q) should fail", p)
 		}
@@ -96,5 +96,25 @@ func TestWritesRejectUnsafePaths(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
 		t.Errorf("outside dir was written to: %v", entries)
+	}
+}
+
+func TestWriteFileKeepsCRLF(t *testing.T) {
+	dir := testutil.GitRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, "w.txt"), []byte("one\r\ntwo\r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := Repo{Dir: dir}
+	if _, err := r.WriteFile("w.txt", "uno\ndos\n"); err != nil {
+		t.Fatal(err)
+	}
+	if got := readDisk(t, dir, "w.txt"); got != "uno\r\ndos\r\n" {
+		t.Errorf("content = %q", got)
+	}
+	if _, err := r.WriteFile("lf.txt", "a\nb\n"); err != nil {
+		t.Fatal(err)
+	}
+	if got := readDisk(t, dir, "lf.txt"); got != "a\nb\n" {
+		t.Errorf("new file = %q", got)
 	}
 }
