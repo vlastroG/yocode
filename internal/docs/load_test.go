@@ -21,7 +21,7 @@ func TestLoadChunksPrefixesExtraRootName(t *testing.T) {
 	for _, c := range chunks {
 		sources[c.Source] = true
 	}
-	if !sources["README.md"] ||!sources["docs/content/intro.md"] || len(sources) != 2 {
+	if !sources["README.md"] || !sources["docs/content/intro.md"] || len(sources) != 2 {
 		t.Errorf("sources = %v", sources)
 	}
 }

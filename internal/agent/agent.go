@@ -45,7 +45,7 @@ type Agent struct {
 	// OnToolCall, if set, is called before each tool call so the UI can show progress.
 	OnToolCall func(name string, args map[string]any)
 
-	history  []ollama.Message
+	history []ollama.Message
 }
 
 func (a *Agent) Ask(ctx context.Context, question string) (string, error) {

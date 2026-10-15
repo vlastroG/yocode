@@ -64,8 +64,8 @@ type grepArgs struct {
 
 // Tool subsets for consumers that get only part of the toolbox.
 var (
-	ReadTools = []string{"git_status", "git_log", "git_diff", "git_changed_files", "git_branch", "list_files", "read_file", "grep"}
-	EditTools = []string{"write_file", "edit_file", "delete_file"}
+	ReadTools     = []string{"git_status", "git_log", "git_diff", "git_changed_files", "git_branch", "list_files", "read_file", "grep"}
+	EditTools     = []string{"write_file", "edit_file", "delete_file"}
 	GitWriteTools = []string{"git_create_branch", "git_commit"}
 )
 
@@ -92,7 +92,9 @@ func New(repo gittools.Repo) *mcp.Server {
 	add(s, "write_file", "Create a file or replace its whole content.",
 		func(_ context.Context, a writeArgs) (string, error) { return repo.WriteFile(a.Path, a.Content) })
 	add(s, "edit_file", "Replace one exact, unique occurrence of old_text with new_text in a file. Read the file first; include enough surrounding lines to make old_text unique.",
-		func(_ context.Context, a editArgs) (string, error) { return repo.EditFile(a.Path, a.OldText, a.NewText) })
+		func(_ context.Context, a editArgs) (string, error) {
+			return repo.EditFile(a.Path, a.OldText, a.NewText)
+		})
 	add(s, "delete_file", "Delete a file.",
 		func(_ context.Context, a fileArgs) (string, error) { return repo.DeleteFile(a.Path) })
 	add(s, "git_create_branch", "Create a local branch and switch to it.",
