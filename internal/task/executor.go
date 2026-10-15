@@ -11,7 +11,9 @@ import (
 
 const stepRules = `- Use the tools yourself. Never ask the user to do anything.
 - Paths are relative to the project root. Never repeat a tool call that already returned a result.
+- Tool calls are limited: read only what the step needs, then make the change.
 - Read a file before editing it. Prefer edit_file over rewriting a whole file; create new files with write_file.
+- Copy identifiers, paths, line numbers and commit messages exactly as the tools return them.
 - Never pull or push: the user does that.
 - Finish with a short summary of what you changed (file paths) or what you found.`
 

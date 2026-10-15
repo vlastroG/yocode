@@ -87,6 +87,7 @@ func withDocs(question string, hits []rag.Hit) string {
 	for i, h := range hits {
 		fmt.Fprintf(&b, "[%d] %s\n\n", i+1, h.Text)
 	}
+	b.WriteString("The excerpts don't show the code: if the question is about code, search it with the tools before answering.\n\n")
 	b.WriteString("Question: " + question)
 	return b.String()
 }

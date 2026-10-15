@@ -21,9 +21,9 @@ const exploreSystemPrompt = `You prepare the plan for a task in a software repos
 const exploreWrapup = "Stop exploring. Reply now with your notes."
 
 const planSystemPrompt = `You write the step-by-step plan for a task in a software repository. Another agent carries out each step.
-- Steps are concrete and name the files they read or change. Use the exact file paths the goal names;
-  a file that doesn't exist yet is created in an "edit" step.
-- A step that changes files reads what it needs itself, so don't plan separate steps that only read.
+- Steps are concrete and name the files they read or change. Use the exact file paths the goal names,
+  even when a file with a similar name exists; a file that doesn't exist yet is created in an "edit" step.
+- A step that changes files reads what it needs itself. Plan a "read" step only when the goal changes nothing.
 - Change only the files the goal asks for.
 - Each step must be doable on its own by an agent that has only the step's access:
   "read" reads files and git history, "edit" also writes, edits and deletes files, "git" also creates branches and commits.
