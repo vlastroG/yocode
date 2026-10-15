@@ -151,6 +151,10 @@ func run(t *testing.T, repo, data string, args ...string) (string, error) {
 	out, err := c.Run(context.Background(), args[1:])
 	t.Logf("yocode %q: %s, %d tool calls (%d failed, %d repeated), error: %v\n%s",
 		args, time.Since(start).Round(time.Second), rec.calls, rec.failed, rec.repeated, err, out)
+	// ids start with a timestamp, so the last plan is the one that ran
+	if plans, _ := filepath.Glob(filepath.Join(data, "tasks", "*.json")); args[0] == "task" && len(plans) > 0 {
+		t.Logf("plan %s", readFile(t, "", plans[len(plans)-1]))
+	}
 	return out, err
 }
 

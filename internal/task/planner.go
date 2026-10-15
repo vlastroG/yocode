@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/vlastroG/yocode/internal/agent"
@@ -23,6 +24,8 @@ const exploreWrapup = "Stop exploring. Reply now with your notes."
 const planSystemPrompt = `You write the step-by-step plan for a task in a software repository. Another agent carries out each step.
 - Steps are concrete and name the files they read or change. Use the exact file paths the goal names,
   even when a file with a similar name exists; a file that doesn't exist yet is created in an "edit" step.
+- Instructions say what to produce and which tool output to base it on (e.g. git_log, grep);
+  don't write the file's content into them.
 - A step that changes files reads what it needs itself. Plan a "read" step only when the goal changes nothing.
 - Change only the files the goal asks for.
 - Each step must be doable on its own by an agent that has only the step's access:
@@ -78,7 +81,35 @@ func (p *Planner) Draft(ctx context.Context, goal string) (Plan, string, error) 
 		return Plan{}, "", err
 	}
 	plan.Goal = goal
+	// a small model tends to swap a new file the goal names for a similar existing one
+	if missing := missingPaths(goal, plan); len(missing) > 0 {
+		retry := append(history, ollama.Message{Role: "assistant", Content: plan.Markdown()},
+			ollama.Message{Role: "user", Content: fmt.Sprintf(
+				"The plan doesn't use %s, which the goal names. Return the corrected plan with these exact paths.",
+				strings.Join(missing, ", "))})
+		if fixed, err := p.plan(ctx, retry); err == nil {
+			plan = fixed
+			plan.Goal = goal
+		}
+	}
 	return plan, notes, nil
+}
+
+var goalPath = regexp.MustCompile(`[A-Za-z0-9_][\w./-]*\.[a-z][a-z0-9]{0,4}\b`)
+
+// missingPaths returns the file paths named in the goal that no step mentions.
+func missingPaths(goal string, p Plan) []string {
+	var text strings.Builder
+	for _, s := range p.Steps {
+		text.WriteString(s.Title + "\n" + s.Instructions + "\n")
+	}
+	var missing []string
+	for _, path := range goalPath.FindAllString(goal, -1) {
+		if !strings.Contains(text.String(), path) {
+			missing = append(missing, path)
+		}
+	}
+	return missing
 }
 
 // Revise replans from the task history (goal, notes, then plan/correction pairs) and the new
@@ -100,11 +131,12 @@ func (p *Planner) plan(ctx context.Context, history []ollama.Message) (Plan, err
 	return plan, nil
 }
 
-// taskHistory starts the planning conversation that corrections are appended to.
+// taskHistory starts the planning conversation that corrections are appended to. The goal comes
+// last, so the plan follows it rather than the notes (e.g. a file the goal names that doesn't exist yet).
 func taskHistory(goal, notes string) []ollama.Message {
 	return []ollama.Message{
-		{Role: "user", Content: "Goal: " + goal},
 		{Role: "user", Content: "Notes from exploring the repository:\n" + notes},
+		{Role: "user", Content: "Goal: " + goal + "\n\nPlan this goal. Use the file paths it names exactly."},
 	}
 }
 

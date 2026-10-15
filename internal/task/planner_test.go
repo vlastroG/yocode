@@ -135,3 +135,27 @@ func TestDraftRejectsEmptyPlan(t *testing.T) {
 		t.Fatal("expected error for a plan with no steps")
 	}
 }
+
+func TestDraftRetriesWhenAGoalPathIsMissing(t *testing.T) {
+	wrong := `{"steps":[{"title":"Edit","instructions":"list them in docs/usage.md","access":"edit"}]}`
+	right := `{"steps":[{"title":"Write","instructions":"list them in docs/usages.md","access":"edit"}]}`
+	llm := &fakeLLM{jsons: []string{wrong, right}}
+	plan, _, err := newPlanner(llm).Draft(context.Background(), "find greet.Hello uses and list them in docs/usages.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(llm.jsonCalls) != 2 || !strings.Contains(joined(llm.jsonCalls[1]), "doesn't use docs/usages.md,") {
+		t.Fatalf("json calls = %d, retry = %q", len(llm.jsonCalls), joined(llm.jsonCalls[len(llm.jsonCalls)-1]))
+	}
+	if plan.Steps[0].Title != "Write" || plan.Goal == "" {
+		t.Errorf("plan = %+v", plan)
+	}
+}
+
+func TestMissingPaths(t *testing.T) {
+	p := Plan{Steps: []Step{{Title: "t", Instructions: "update README.md"}}}
+	got := missingPaths("call greet.Hello, update README.md and write CHANGELOG.md.", p)
+	if len(got) != 1 || got[0] != "CHANGELOG.md" {
+		t.Errorf("missing = %q", got)
+	}
+}
