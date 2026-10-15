@@ -147,7 +147,7 @@ func (e *Executor) progress(s string) {
 	}
 }
 
-// Markdown renders the answer followed by each step's outcome.
+// Markdown renders the answer, each step's outcome and, for a saved plan, how to replay it.
 func (r Result) Markdown() string {
 	var b strings.Builder
 	b.WriteString(r.Answer + "\n\n### Steps\n\n")
@@ -157,6 +157,9 @@ func (r Result) Markdown() string {
 		} else {
 			fmt.Fprintf(&b, "- ✓ **%s** - %s\n", s.Step.Title, s.Summary)
 		}
+	}
+	if r.Plan.ID != "" {
+		fmt.Fprintf(&b, "\nPlan %s: replay with `task --plan %s`\n", r.Plan.ID, r.Plan.ID)
 	}
 	return b.String()
 }

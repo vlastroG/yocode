@@ -141,12 +141,13 @@ func TestSingleMode(t *testing.T) {
 }
 
 func TestResultMarkdown(t *testing.T) {
-	res := Result{Answer: "Done.", Steps: []StepResult{
+	res := Result{Plan: Plan{ID: "20261015-120000-x"}, Answer: "Done.", Steps: []StepResult{
 		{Step: testPlan.Steps[0], Summary: "found 3 usages"},
 		{Step: testPlan.Steps[1], Err: "no answer"},
 	}}
 	md := res.Markdown()
-	for _, want := range []string{"Done.", "### Steps", "✓ **Find X**", "found 3 usages", "✗ **Edit README**", "no answer"} {
+	for _, want := range []string{"Done.", "### Steps", "✓ **Find X**", "found 3 usages", "✗ **Edit README**", "no answer",
+		"task --plan 20261015-120000-x"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("markdown missing %q:\n%s", want, md)
 		}
