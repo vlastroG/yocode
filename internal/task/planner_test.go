@@ -72,7 +72,7 @@ func joined(msgs []ollama.Message) string {
 	return b.String()
 }
 
-const twoSteps = `{"steps":[{"title":"Find X","instructions":"grep X","access":"read"},` +
+const twoSteps = `{"steps":[{"title":"Find X","instructions":"grep X and list it in X.md","access":"edit"},` +
 	`{"title":"Edit README","instructions":"document X in README.md","access":"edit"}]}`
 
 func newPlanner(llm *fakeLLM) *Planner {
@@ -144,7 +144,7 @@ func TestDraftRetriesWhenAGoalPathIsMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(llm.jsonCalls) != 2 || !strings.Contains(joined(llm.jsonCalls[1]), "doesn't use docs/usages.md,") {
+	if len(llm.jsonCalls) != 2 || !strings.Contains(joined(llm.jsonCalls[1]), "Use the path docs/usages.md exactly") {
 		t.Fatalf("json calls = %d, retry = %q", len(llm.jsonCalls), joined(llm.jsonCalls[len(llm.jsonCalls)-1]))
 	}
 	if plan.Steps[0].Title != "Write" || plan.Goal == "" {
@@ -157,5 +157,17 @@ func TestMissingPaths(t *testing.T) {
 	got := missingPaths("call greet.Hello, update README.md and write CHANGELOG.md.", p)
 	if len(got) != 1 || got[0] != "CHANGELOG.md" {
 		t.Errorf("missing = %q", got)
+	}
+}
+
+func TestPlanProblemsAsksToMergeReadSteps(t *testing.T) {
+	p := Plan{Steps: []Step{{Title: "a", Access: AccessRead}, {Title: "b", Access: AccessRead}, {Title: "c", Access: AccessEdit}}}
+	got := planProblems("document X", p)
+	if len(got) != 1 || !strings.Contains(got[0], "Step 1, 2 only reads") {
+		t.Errorf("problems = %q", got)
+	}
+	p.Steps = p.Steps[:2]
+	if got := planProblems("find X", p); len(got) != 0 {
+		t.Errorf("a read-only goal: problems = %q", got)
 	}
 }

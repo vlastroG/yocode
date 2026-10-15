@@ -38,6 +38,7 @@ const planSystemPrompt = `You write the step-by-step plan for a task in a softwa
 
 const (
 	exploreSteps = 6
+	planRetries  = 2 // replans when the plan breaks a rule planProblems checks
 	planDocHits  = 5
 )
 
@@ -81,18 +82,44 @@ func (p *Planner) Draft(ctx context.Context, goal string) (Plan, string, error) 
 		return Plan{}, "", err
 	}
 	plan.Goal = goal
-	// a small model tends to swap a new file the goal names for a similar existing one
-	if missing := missingPaths(goal, plan); len(missing) > 0 {
-		retry := append(history, ollama.Message{Role: "assistant", Content: plan.Markdown()},
-			ollama.Message{Role: "user", Content: fmt.Sprintf(
-				"The plan doesn't use %s, which the goal names. Return the corrected plan with these exact paths.",
-				strings.Join(missing, ", "))})
-		if fixed, err := p.plan(ctx, retry); err == nil {
-			plan = fixed
-			plan.Goal = goal
+	// a small model ignores some planning rules; pointing at the broken ones usually fixes them
+	for range planRetries {
+		problems := planProblems(goal, plan)
+		if len(problems) == 0 {
+			break
 		}
+		retry := append(history[:len(history):len(history)], ollama.Message{Role: "assistant", Content: plan.Markdown()},
+			ollama.Message{Role: "user", Content: "Fix the plan and return all of it:\n- " + strings.Join(problems, "\n- ")})
+		fixed, err := p.plan(ctx, retry)
+		if err != nil {
+			break
+		}
+		plan = fixed
+		plan.Goal = goal
 	}
 	return plan, notes, nil
+}
+
+// planProblems lists the planning rules a plan breaks that code can check.
+func planProblems(goal string, p Plan) []string {
+	var problems []string
+	for _, path := range missingPaths(goal, p) {
+		problems = append(problems, fmt.Sprintf("Use the path %s exactly as the goal names it, even if it doesn't "+
+			"exist yet (then a step creates it) or a file with a similar name exists.", path))
+	}
+	if p.widestAccess() != AccessRead {
+		var reads []string
+		for i, s := range p.Steps {
+			if s.Access == AccessRead {
+				reads = append(reads, fmt.Sprint(i+1))
+			}
+		}
+		if len(reads) > 0 {
+			problems = append(problems, fmt.Sprintf("Step %s only reads. Merge it into the step that changes files: "+
+				"that step reads what it needs itself.", strings.Join(reads, ", ")))
+		}
+	}
+	return problems
 }
 
 var goalPath = regexp.MustCompile(`[A-Za-z0-9_][\w./-]*\.[a-z][a-z0-9]{0,4}\b`)

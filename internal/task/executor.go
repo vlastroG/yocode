@@ -19,6 +19,8 @@ const stepRules = `- Use the tools yourself. Never ask the user to do anything.
 
 const stepSystemPrompt = "You carry out one step of an approved plan in a software repository.\n" + stepRules
 
+const readWrapup = "Stop using tools. Reply now with what you found."
+
 const singleSystemPrompt = "You carry out every step of an approved plan in a software repository, in order.\n" + stepRules
 
 const rootSystemPrompt = `You report the result of a task that agents carried out in a software repository.
@@ -108,6 +110,10 @@ func (e *Executor) runAll(ctx context.Context, p Plan) StepResult {
 
 func (e *Executor) loop(ctx context.Context, s Step, system, user string, maxSteps int) StepResult {
 	l := agent.Loop{LLM: e.LLM, Model: e.Model, Tools: e.ToolsFor(s.Access), MaxSteps: maxSteps, OnToolCall: e.OnToolCall}
+	if s.Access == AccessRead {
+		// a read step's findings are useful even when it runs out of calls
+		l.Wrapup = readWrapup
+	}
 	out, err := l.Run(ctx, []ollama.Message{{Role: "system", Content: system}, {Role: "user", Content: user}})
 	if err != nil {
 		return StepResult{Step: s, Err: err.Error()}

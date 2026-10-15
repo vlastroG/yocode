@@ -153,3 +153,20 @@ func TestResultMarkdown(t *testing.T) {
 		}
 	}
 }
+
+func TestReadStepWrapsUpWhenOutOfCalls(t *testing.T) {
+	replies := make([]ollama.Message, stepMaxSteps)
+	for i := range replies {
+		replies[i] = toolCall("read_file")
+	}
+	replies = append(replies, reply("found X in a.go"), reply("done"))
+	r := newRig(script(replies...))
+	plan := Plan{Goal: "find X", Steps: testPlan.Steps[:1]}
+	res, err := r.exec.Run(context.Background(), plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Steps[0].Err != "" || res.Steps[0].Summary != "found X in a.go" {
+		t.Errorf("step = %+v", res.Steps[0])
+	}
+}
