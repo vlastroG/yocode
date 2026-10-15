@@ -80,3 +80,13 @@ func TestTaskMode(t *testing.T) {
 		t.Error("TASK_MODE=subagents runs in single mode")
 	}
 }
+
+func TestJevSettings(t *testing.T) {
+	if c := FromEnv(env(nil)); c.JevKey != "" || c.JevModel != "jev-1.13.0" {
+		t.Errorf("defaults: key %q model %q", c.JevKey, c.JevModel)
+	}
+	c := FromEnv(env(map[string]string{"TYPESAFE_API_KEY": " ts-1 ", "JEV_MODEL": "jev-1.14.0"}))
+	if c.JevKey != "ts-1" || c.JevModel != "jev-1.14.0" {
+		t.Errorf("overrides: key %q model %q", c.JevKey, c.JevModel)
+	}
+}

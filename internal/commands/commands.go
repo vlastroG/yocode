@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/vlastroG/yocode/internal/agent"
+	"github.com/vlastroG/yocode/internal/jev"
 	"github.com/vlastroG/yocode/internal/review"
 	"github.com/vlastroG/yocode/internal/task"
 )
@@ -17,6 +18,7 @@ import (
 const (
 	planHint   = "\n\nType corrections, /go to run it, /cancel to drop it."
 	promptHint = "\n\nEnter = run · q = cancel · or type a correction: "
+	askedHint  = "\n\n(Read as a question; the plan is still pending. /revise <text> changes it, /go runs it.)"
 )
 
 type Command struct {
@@ -26,6 +28,8 @@ type Command struct {
 	Label string // title of the result block in the chat
 	// ChatOnly commands act on chat state (the pending plan) and are not CLI subcommands.
 	ChatOnly bool
+	// Hidden commands are reached through plain text only and left out of help and completion.
+	Hidden bool
 	// Check validates the arguments cheaply, so errors show up before anything slow starts.
 	Check func(args []string) error
 	// Run executes the command and returns its text output.
@@ -52,11 +56,15 @@ type Deps struct {
 	Tools agent.Tools
 	// Prompt asks the user on the terminal (CLI only); nil in the chat, which uses /go and /cancel.
 	Prompt func(text string) (string, error)
+	// Router, if set, decides whether plain text typed while a plan is pending corrects, runs or
+	// drops it, or asks a question. Without it such text always corrects the plan.
+	Router Router
 }
 
 // New binds the commands to their dependencies. New(Deps{}) still serves names, help and checks.
 func New(d Deps) Set {
 	a := d.Agent
+	replyLabel := "plan"
 	return Set{
 		{
 			Name: "ask", Args: "<question>", Label: "yocode",
@@ -147,6 +155,37 @@ func New(d Deps) Set {
 			},
 		},
 		{
+			Name: "reply", Args: "<text>", Label: "plan", ChatOnly: true, Hidden: true,
+			Help:  "plain text while a plan is pending",
+			Check: func(args []string) error { return d.checkPending() },
+			Run: func(ctx context.Context, args []string) (string, error) {
+				msg := strings.Join(args, " ")
+				switch d.route(ctx, msg) {
+				case jev.ReplyApprove:
+					replyLabel = "task"
+					return d.finish(d.Task.Approve(ctx))
+				case jev.ReplyCancel:
+					replyLabel = "task"
+					d.Task.Cancel()
+					return "cancelled", nil
+				case jev.ReplyAsk:
+					replyLabel = "yocode"
+					ans, err := a.Ask(ctx, msg)
+					if err != nil {
+						return "", err
+					}
+					return ans + askedHint, nil
+				}
+				replyLabel = "plan"
+				p, err := d.Task.Revise(ctx, msg)
+				if err != nil {
+					return "", err
+				}
+				return p.Markdown() + planHint, nil
+			},
+			label: func() string { return replyLabel },
+		},
+		{
 			Name: "go", Label: "task", ChatOnly: true,
 			Help:  "run the pending plan",
 			Check: func([]string) error { return d.checkPending() },
@@ -195,6 +234,20 @@ func runTask(ctx context.Context, d Deps, ta task.Args) (string, error) {
 		case reply == "q":
 			d.Task.Cancel()
 			return "cancelled", nil
+		}
+		switch d.route(ctx, reply) {
+		case jev.ReplyApprove:
+			return d.finish(d.Task.Approve(ctx))
+		case jev.ReplyCancel:
+			d.Task.Cancel()
+			return "cancelled", nil
+		case jev.ReplyAsk:
+			ans, err := d.Agent.Ask(ctx, reply)
+			if err != nil {
+				ans = "Question failed: " + err.Error()
+			}
+			text = ans + "\n\n" + plan.Markdown() + promptHint
+			continue
 		}
 		revised, err := d.Task.Revise(ctx, reply)
 		if err != nil {
@@ -263,6 +316,9 @@ func (s Set) Lookup(name string) (Command, bool) {
 func (s Set) Usage(prefix string) string {
 	var b strings.Builder
 	for _, c := range s {
+		if c.Hidden {
+			continue
+		}
 		b.WriteString(UsageLine(prefix+c.Name+" "+c.Args, c.Help))
 	}
 	return b.String()
@@ -273,12 +329,12 @@ func UsageLine(syntax, help string) string {
 	return fmt.Sprintf("  %-40s %s\n", syntax, help)
 }
 
-// Parse turns chat input into a command call: plain text asks a question, or revises the plan
-// while one is pending; "/name args" picks a command. The arguments are checked.
+// Parse turns chat input into a command call: plain text asks a question, or replies to the plan
+// while one is pending (see Deps.Router); "/name args" picks a command. The arguments are checked.
 func (s Set) Parse(input string) (Command, []string, error) {
 	name, args := "ask", []string{input}
-	if rev, ok := s.Lookup("revise"); ok && rev.Check(args) == nil {
-		name = "revise"
+	if reply, ok := s.Lookup("reply"); ok && reply.Check(args) == nil {
+		name = "reply"
 	}
 	if strings.HasPrefix(input, "/") {
 		fields := strings.Fields(input)

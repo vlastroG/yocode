@@ -26,6 +26,8 @@ services:
       CHAT_MODEL: ${CHAT_MODEL:-deepseek-flash}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_URL: ${DEEPSEEK_URL:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      JEV_MODEL: ${JEV_MODEL:-}
       TASK_MODE: ${TASK_MODE:-single}
       GIT_AUTHOR_NAME: ${GIT_USER_NAME:-yocode}
       GIT_COMMITTER_NAME: ${GIT_USER_NAME:-yocode}
@@ -54,6 +56,8 @@ services:
       CHAT_MODEL: ${CHAT_MODEL:-deepseek-flash}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_URL: ${DEEPSEEK_URL:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      JEV_MODEL: ${JEV_MODEL:-}
       EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
       TASK_MODE: ${TASK_MODE:-single}
 

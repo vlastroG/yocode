@@ -117,6 +117,9 @@ func help(cmds commands.Set) string {
 func suggestions(cmds commands.Set) []string {
 	s := []string{"/help", "/exit"}
 	for _, c := range cmds {
+		if c.Hidden {
+			continue
+		}
 		s = append(s, "/"+c.Name+" ")
 	}
 	return s

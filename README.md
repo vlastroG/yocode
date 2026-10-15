@@ -2,7 +2,7 @@
 
 A code assistant. It answers questions about a project using its documentation (RAG, hybrid semantic + keyword search) and git/file tools exposed through an MCP server, and carries out high-level tasks by editing files and committing locally. It runs in Docker: the chat model is DeepSeek in the cloud, the docs index (embeddings) stays local in Ollama.
 
-**Privacy:** questions, docs excerpts and everything the tools read (files, diffs, git history) are sent to DeepSeek. Embeddings and the docs index never leave your machine.
+**Privacy:** questions, docs excerpts and everything the tools read (files, diffs, git history) are sent to DeepSeek. Embeddings and the docs index never leave your machine. With `TYPESAFE_API_KEY` set, docs excerpts and your replies to a pending plan also go to TypeSafe (Jev).
 
 ## Requirements
 
@@ -40,7 +40,7 @@ The branches must exist in your local clone: run `git fetch` on the host first, 
 
 `task <goal>` (chat: `/task <goal>`) explores the project and proposes a numbered plan. Each step has an access level: `read`, `edit`, or `git` (edit plus local branch and commit).
 
-- Correct the plan by typing in the chat (or any text at the CLI prompt); the plan is revised, repeat until it fits.
+- Correct the plan by typing in the chat (or any text at the CLI prompt); the plan is revised, repeat until it fits. With `TYPESAFE_API_KEY` set, Jev reads such text first: a clear question gets an answer (the plan stays pending), a clear "go ahead" runs the plan and "never mind" drops it; anything less certain revises the plan. `/revise`, `/go` and `/cancel` always do exactly that.
 - `/go` (CLI: Enter) runs it, `/cancel` (CLI: `q`) drops it. `--yes` skips the prompt.
 - All steps run in one conversation with the access of the plan's widest step; the final answer summarizes the result. `TASK_MODE=subagents` runs every step in its own subagent with that step's access instead (fewer scenarios passed in our tests).
 - Approved plans are saved as `/data/tasks/<id>.json` and results as `<id>.md` in the `yocode-data` volume. `task --plan <id>` replays a saved plan as `<id>-replay-<time>`; requests use temperature 0, but a cloud model doesn't guarantee identical runs.
@@ -57,6 +57,8 @@ The branches must exist in your local clone: run `git fetch` on the host first, 
 | `DEEPSEEK_API_KEY` | required | DeepSeek API key |
 | `CHAT_MODEL` | `deepseek-flash` | DeepSeek chat model (`deepseek-flash` or `deepseek-v4-pro`) |
 | `DEEPSEEK_URL` | `https://api.deepseek.com` | DeepSeek API base URL |
+| `TYPESAFE_API_KEY` | none | Optional: Jev keeps only the relevant docs excerpts (from a 20-chunk shortlist) and routes chat replies to a pending plan |
+| `JEV_MODEL` | `jev-1.13.0` | Jev model |
 | `TASK_MODE` | `single` | `single` (one conversation, widest step access) or `subagents` (one agent per step, per-step access) |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `yocode` / `yocode@localhost` | Author and committer of task commits |
 | `EMBED_MODEL` | `bge-m3` | Local Ollama embedding model (multilingual; handles Russian docs) |

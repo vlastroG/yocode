@@ -25,6 +25,8 @@ Configuration (environment; with docker compose set these in .env):
   DEEPSEEK_API_KEY DeepSeek API key (required for everything but help)
   CHAT_MODEL       DeepSeek chat model (default deepseek-flash; or deepseek-v4-pro)
   DEEPSEEK_URL     DeepSeek API base URL (default https://api.deepseek.com)
+  TYPESAFE_API_KEY optional: Jev reranks docs excerpts and routes chat replies to a pending plan
+  JEV_MODEL        Jev model (default jev-1.13.0)
   TASK_MODE        single (default: one conversation, access of the widest step) or
                    subagents (one agent per step, with that step's access)
   GIT_USER_NAME    author and committer name of task commits (default yocode)

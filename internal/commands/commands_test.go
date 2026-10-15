@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/vlastroG/yocode/internal/agent"
 	"github.com/vlastroG/yocode/internal/deepseek"
+	"github.com/vlastroG/yocode/internal/jev"
 	"github.com/vlastroG/yocode/internal/rag"
 	"github.com/vlastroG/yocode/internal/task"
 )
@@ -141,11 +143,11 @@ func TestParseRoutesWhilePlanPending(t *testing.T) {
 			t.Errorf("task: label %q, output %q", c.ResultLabel(), out)
 		}
 		c, args, err := s.Parse("also update README")
-		if err != nil || c.Name != "revise" || !reflect.DeepEqual(args, []string{"also update README"}) {
+		if err != nil || c.Name != "reply" || !reflect.DeepEqual(args, []string{"also update README"}) {
 			t.Fatalf("while pending: %q %v %v", c.Name, args, err)
 		}
-		if _, out := runCmd(t, s, "revise", args...); !strings.Contains(out, "## Plan") {
-			t.Errorf("revise output %q", out)
+		if c, out := runCmd(t, s, "reply", args...); !strings.Contains(out, "## Plan") || c.ResultLabel() != "plan" {
+			t.Errorf("reply without a router: label %q, output %q", c.ResultLabel(), out)
 		}
 		c, _ = runCmd(t, s, finish)
 		if r.deps.Task.Pending() {
@@ -304,5 +306,83 @@ func TestTaskPromptErrorKeepsCause(t *testing.T) {
 	}
 	if r.runs != 0 || r.deps.Task.Pending() {
 		t.Errorf("runs = %d, pending = %v", r.runs, r.deps.Task.Pending())
+	}
+}
+
+func TestReplyRoutesPlainTextByConfidence(t *testing.T) {
+	cases := []struct {
+		choice     string
+		confidence float64
+		err        error
+		label      string
+		pending    bool // plan still pending afterwards
+		ran        bool // executor ran
+	}{
+		{jev.ReplyAsk, 0.9, nil, "yocode", true, false},
+		{jev.ReplyAsk, 0.4, nil, "plan", true, false}, // unsure: revise
+		{jev.ReplyApprove, 0.95, nil, "task", false, true},
+		{jev.ReplyApprove, 0.7, nil, "plan", true, false}, // running needs more confidence
+		{jev.ReplyCancel, 0.9, nil, "task", false, false},
+		{jev.ReplyRevise, 0.99, nil, "plan", true, false},
+		{"", 0, errors.New("jev down"), "plan", true, false},
+	}
+	for _, tc := range cases {
+		r := newTaskRig(t)
+		var gotMsg, gotPlan string
+		r.deps.Router = func(_ context.Context, goal, plan, message string) (string, float64, error) {
+			gotMsg, gotPlan = message, plan
+			return tc.choice, tc.confidence, tc.err
+		}
+		s := New(r.deps)
+		runCmd(t, s, "task", "write", "a", "changelog")
+		c, args, err := s.Parse("what does step 1 do?")
+		if err != nil || c.Name != "reply" {
+			t.Fatalf("parse: %q %v", c.Name, err)
+		}
+		c, out := runCmd(t, s, "reply", args...)
+		name := fmt.Sprintf("%s@%.2f", tc.choice, tc.confidence)
+		if c.ResultLabel() != tc.label || r.deps.Task.Pending() != tc.pending || (r.runs > 0) != tc.ran {
+			t.Errorf("%s: label %q pending %v ran %v, output %q", name, c.ResultLabel(), r.deps.Task.Pending(), r.runs > 0, out)
+		}
+		if gotMsg != "what does step 1 do?" || !strings.Contains(gotPlan, "## Plan") {
+			t.Errorf("%s: router got %q / %q", name, gotMsg, gotPlan)
+		}
+		if tc.label == "yocode" && !strings.Contains(out, "still pending") {
+			t.Errorf("%s: answer lacks the pending hint: %q", name, out)
+		}
+	}
+}
+
+func TestReplyIsHiddenFromHelp(t *testing.T) {
+	if u := New(Deps{}).Usage("/"); strings.Contains(u, "/reply") || !strings.Contains(u, "/revise") {
+		t.Errorf("usage:\n%s", u)
+	}
+}
+
+func TestTaskPromptRoutesAQuestion(t *testing.T) {
+	r := newTaskRig(t)
+	r.deps.Router = func(_ context.Context, _, _, message string) (string, float64, error) {
+		if message == "which files change?" {
+			return jev.ReplyAsk, 0.9, nil
+		}
+		return jev.ReplyApprove, 0.95, nil
+	}
+	replies := []string{"which files change?", "looks good, run it"}
+	var prompts []string
+	r.deps.Prompt = func(text string) (string, error) {
+		prompts = append(prompts, text)
+		if len(replies) == 0 {
+			return "", errors.New("prompted too often")
+		}
+		reply := replies[0]
+		replies = replies[1:]
+		return reply, nil
+	}
+	runCmd(t, New(r.deps), "task", "write", "a", "changelog")
+	if r.llm.planCalls != 1 || r.runs == 0 {
+		t.Errorf("plan calls = %d (want no revision), runs = %d", r.llm.planCalls, r.runs)
+	}
+	if len(prompts) != 2 || !strings.Contains(prompts[1], "## Plan") {
+		t.Errorf("prompts = %q", prompts)
 	}
 }

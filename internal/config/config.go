@@ -15,6 +15,10 @@ type Config struct {
 	APIKey     string // DEEPSEEK_API_KEY
 	APIURL     string // DeepSeek API base URL
 
+	// TypeSafe Jev judges docs relevance and routes chat replies to a pending plan; off without a key.
+	JevKey   string
+	JevModel string
+
 	TaskSingle bool // one conversation for all task steps; TASK_MODE=subagents turns it off
 
 	ProjectDir string // project mount inside the container
@@ -44,6 +48,8 @@ func FromEnv(getenv func(string) string) Config {
 		EmbedModel:     get("EMBED_MODEL", "bge-m3"),
 		APIKey:         strings.TrimSpace(getenv("DEEPSEEK_API_KEY")),
 		APIURL:         strings.TrimRight(get("DEEPSEEK_URL", "https://api.deepseek.com"), "/"),
+		JevKey:         strings.TrimSpace(getenv("TYPESAFE_API_KEY")),
+		JevModel:       get("JEV_MODEL", "jev-1.13.0"),
 		TaskSingle:     getenv("TASK_MODE") != "subagents",
 		ProjectDir:     get("PROJECT_DIR", "/project"),
 		DocsDir:        get("DOCS_DIR", "/docs"),

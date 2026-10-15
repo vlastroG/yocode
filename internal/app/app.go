@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/philippgille/chromem-go"
@@ -15,6 +16,7 @@ import (
 	"github.com/vlastroG/yocode/internal/config"
 	"github.com/vlastroG/yocode/internal/deepseek"
 	"github.com/vlastroG/yocode/internal/docs"
+	"github.com/vlastroG/yocode/internal/jev"
 	"github.com/vlastroG/yocode/internal/mcpclient"
 	"github.com/vlastroG/yocode/internal/mcpserver"
 	"github.com/vlastroG/yocode/internal/rag"
@@ -30,6 +32,7 @@ type App struct {
 	Info   string
 
 	readOnly agent.Tools
+	router   commands.Router
 }
 
 // Setup pulls the embedding model if missing, builds or reuses the docs index and wires everything to the MCP
@@ -62,6 +65,17 @@ func Setup(ctx context.Context, cfg config.Config, connect func(context.Context)
 	}
 	info := fmt.Sprintf("docs index %s: %s (%d chunks) · model %s · project %s",
 		cfg.IndexKey, state, idx.Count(), cfg.ChatModel, cfg.ProjectDir)
+	var docsSearch agent.Retriever = idx
+	var router commands.Router
+	if cfg.JevKey != "" {
+		j := &jev.Client{APIKey: cfg.JevKey, Model: cfg.JevModel, Retries: 2}
+		var warned sync.Once
+		docsSearch = &jev.Reranker{Inner: idx, Jev: j, OnError: func(err error) {
+			warned.Do(func() { fmt.Fprintln(os.Stderr, "jev unavailable, using plain docs search:", err) })
+		}}
+		router = j.PlanReply
+		info += " · Jev " + cfg.JevModel
+	}
 	fmt.Fprintln(os.Stderr, info)
 
 	tools, err := connect(ctx)
@@ -77,11 +91,11 @@ func Setup(ctx context.Context, cfg config.Config, connect func(context.Context)
 		task.AccessGit:  tools.Only(gitWrite...),
 	}
 	return &App{
-		Agent: &agent.Agent{LLM: llm, Model: cfg.ChatModel, Tools: readOnly, Docs: idx},
-		Review: &review.Pipeline{LLM: llm, Model: cfg.ChatModel, Tools: readOnly, Docs: idx,
+		Agent: &agent.Agent{LLM: llm, Model: cfg.ChatModel, Tools: readOnly, Docs: docsSearch},
+		Review: &review.Pipeline{LLM: llm, Model: cfg.ChatModel, Tools: readOnly, Docs: docsSearch,
 			Language: cfg.ReviewLanguage, MaxFiles: cfg.ReviewMaxFiles},
 		Task: &task.Session{
-			Planner: &task.Planner{LLM: llm, Model: cfg.ChatModel, Tools: readOnly, Docs: idx},
+			Planner: &task.Planner{LLM: llm, Model: cfg.ChatModel, Tools: readOnly, Docs: docsSearch},
 			Executor: &task.Executor{LLM: llm, Model: cfg.ChatModel, Single: cfg.TaskSingle,
 				ToolsFor: func(a task.Access) agent.Tools {
 					if v, ok := views[a]; ok {
@@ -95,12 +109,14 @@ func Setup(ctx context.Context, cfg config.Config, connect func(context.Context)
 		Tools:    tools,
 		Info:     info,
 		readOnly: readOnly,
+		router:   router,
 	}, nil
 }
 
 // Deps binds the commands to the app; prompt asks on the terminal (nil in the chat).
 func (a *App) Deps(prompt func(string) (string, error)) commands.Deps {
-	return commands.Deps{Agent: a.Agent, Review: a.Review, Task: a.Task, Tools: a.readOnly, Prompt: prompt}
+	return commands.Deps{Agent: a.Agent, Review: a.Review, Task: a.Task, Tools: a.readOnly, Prompt: prompt,
+		Router: a.router}
 }
 
 func (a *App) Close() { a.Tools.Close() }

@@ -67,6 +67,16 @@ func (s *Session) Pending() bool {
 	return s.pending != nil
 }
 
+// PendingPlan returns the plan awaiting approval, if any.
+func (s *Session) PendingPlan() (Plan, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pending == nil {
+		return Plan{}, false
+	}
+	return *s.pending, true
+}
+
 // Approve saves the pending plan under a new id, runs it, saves the result and closes the task.
 func (s *Session) Approve(ctx context.Context) (Result, error) {
 	s.mu.Lock()
