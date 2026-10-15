@@ -22,13 +22,21 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       PROJECT_HOST_PATH: ${PROJECT_PATH:?set PROJECT_PATH in .env}
       DOCS_HOST_PATH: ${DOCS_PATH:-}
-      CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:7b}
+      CHAT_MODEL: ${CHAT_MODEL:-qwen3.5:9b-q4_K_M}
+      NUM_CTX: ${NUM_CTX:-16384}
+      THINK: ${THINK:-false}
+      SEED: ${SEED:-42}
+      TASK_MODE: ${TASK_MODE:-subagents}
+      GIT_AUTHOR_NAME: ${GIT_USER_NAME:-yocode}
+      GIT_COMMITTER_NAME: ${GIT_USER_NAME:-yocode}
+      GIT_AUTHOR_EMAIL: ${GIT_USER_EMAIL:-yocode@localhost}
+      GIT_COMMITTER_EMAIL: ${GIT_USER_EMAIL:-yocode@localhost}
       EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
       REINDEX: ${REINDEX:-false}
       REVIEW_LANGUAGE: ${REVIEW_LANGUAGE:-English}
       REVIEW_MAX_FILES: ${REVIEW_MAX_FILES:-25}
     volumes:
-      - ${PROJECT_PATH:?set PROJECT_PATH in .env}:/project:ro
+      - ${PROJECT_PATH:?set PROJECT_PATH in .env}:/project
       - ${DOCS_PATH:-./.nodocs}:/docs:ro
       - yocode-data:/data
 
