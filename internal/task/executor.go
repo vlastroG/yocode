@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/vlastroG/yocode/internal/agent"
-	"github.com/vlastroG/yocode/internal/ollama"
+	"github.com/vlastroG/yocode/internal/deepseek"
 )
 
 const stepRules = `- Use the tools yourself. Never ask the user to do anything.
@@ -116,7 +116,7 @@ func (e *Executor) loop(ctx context.Context, s Step, system, user string, maxSte
 		// a read step's findings are useful even when it runs out of calls
 		l.Wrapup = readWrapup
 	}
-	out, err := l.Run(ctx, []ollama.Message{{Role: "system", Content: system}, {Role: "user", Content: user}})
+	out, err := l.Run(ctx, []deepseek.Message{{Role: "system", Content: system}, {Role: "user", Content: user}})
 	if err != nil {
 		return StepResult{Step: s, Err: err.Error()}
 	}
@@ -143,7 +143,7 @@ func (e *Executor) root(ctx context.Context, r Result) (string, error) {
 		}
 	}
 	fmt.Fprintf(&b, "\ngit status:\n%s", status)
-	resp, err := e.LLM.Chat(ctx, e.Model, []ollama.Message{
+	resp, err := e.LLM.Chat(ctx, e.Model, []deepseek.Message{
 		{Role: "system", Content: rootSystemPrompt},
 		{Role: "user", Content: b.String()},
 	}, nil)

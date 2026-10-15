@@ -26,10 +26,10 @@ import (
 	"github.com/vlastroG/yocode/internal/app"
 	"github.com/vlastroG/yocode/internal/commands"
 	"github.com/vlastroG/yocode/internal/config"
+	"github.com/vlastroG/yocode/internal/deepseek"
 	"github.com/vlastroG/yocode/internal/gittools"
 	"github.com/vlastroG/yocode/internal/mcpclient"
 	"github.com/vlastroG/yocode/internal/mcpserver"
-	"github.com/vlastroG/yocode/internal/ollama"
 	"github.com/vlastroG/yocode/internal/task"
 )
 
@@ -42,8 +42,8 @@ const (
 var docsDir string
 
 func TestMain(m *testing.M) {
-	if os.Getenv("OLLAMA_URL") == "" {
-		fmt.Println("OLLAMA_URL is not set: skipping the integration tests")
+	if os.Getenv("OLLAMA_URL") == "" || os.Getenv("DEEPSEEK_API_KEY") == "" {
+		fmt.Println("OLLAMA_URL (embeddings) or DEEPSEEK_API_KEY is not set: skipping the integration tests")
 		os.Exit(0)
 	}
 	dir, err := os.MkdirTemp("", "yocode-nodocs")
@@ -89,7 +89,7 @@ type failLog struct {
 	r     *recorder
 }
 
-func (f failLog) Tools(ctx context.Context) ([]ollama.Tool, error) { return f.inner.Tools(ctx) }
+func (f failLog) Tools(ctx context.Context) ([]deepseek.Tool, error) { return f.inner.Tools(ctx) }
 
 func (f failLog) Call(ctx context.Context, name string, args map[string]any) (string, error) {
 	out, err := f.inner.Call(ctx, name, args)

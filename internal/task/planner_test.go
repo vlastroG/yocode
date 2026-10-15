@@ -8,21 +8,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vlastroG/yocode/internal/ollama"
+	"github.com/vlastroG/yocode/internal/deepseek"
 	"github.com/vlastroG/yocode/internal/rag"
 )
 
 // fakeLLM answers Chat from a script and ChatJSON from a queue of JSON documents.
 type fakeLLM struct {
-	chat      func(call int, msgs []ollama.Message, tools []ollama.Tool) (ollama.Message, error)
+	chat      func(call int, msgs []deepseek.Message, tools []deepseek.Tool) (deepseek.Message, error)
 	jsons     []string
-	chatCalls [][]ollama.Message
-	toolDefs  [][]ollama.Tool
-	jsonCalls [][]ollama.Message
+	chatCalls [][]deepseek.Message
+	toolDefs  [][]deepseek.Tool
+	jsonCalls [][]deepseek.Message
 }
 
-func (f *fakeLLM) Chat(_ context.Context, _ string, msgs []ollama.Message, tools []ollama.Tool) (ollama.Message, error) {
-	f.chatCalls = append(f.chatCalls, append([]ollama.Message(nil), msgs...))
+func (f *fakeLLM) Chat(_ context.Context, _ string, msgs []deepseek.Message, tools []deepseek.Tool) (deepseek.Message, error) {
+	f.chatCalls = append(f.chatCalls, append([]deepseek.Message(nil), msgs...))
 	f.toolDefs = append(f.toolDefs, tools)
 	if f.chat == nil {
 		return reply("ok"), nil
@@ -30,8 +30,8 @@ func (f *fakeLLM) Chat(_ context.Context, _ string, msgs []ollama.Message, tools
 	return f.chat(len(f.chatCalls)-1, msgs, tools)
 }
 
-func (f *fakeLLM) ChatJSON(_ context.Context, _ string, msgs []ollama.Message, _ json.RawMessage, out any) error {
-	f.jsonCalls = append(f.jsonCalls, append([]ollama.Message(nil), msgs...))
+func (f *fakeLLM) ChatJSON(_ context.Context, _ string, msgs []deepseek.Message, _ json.RawMessage, out any) error {
+	f.jsonCalls = append(f.jsonCalls, append([]deepseek.Message(nil), msgs...))
 	if len(f.jsons) == 0 {
 		return errors.New("no more json replies")
 	}
@@ -42,8 +42,8 @@ func (f *fakeLLM) ChatJSON(_ context.Context, _ string, msgs []ollama.Message, _
 
 type fakeTools struct{ calls []string }
 
-func (f *fakeTools) Tools(context.Context) ([]ollama.Tool, error) {
-	return []ollama.Tool{{Type: "function", Function: ollama.ToolFunction{Name: "read_file"}}}, nil
+func (f *fakeTools) Tools(context.Context) ([]deepseek.Tool, error) {
+	return []deepseek.Tool{{Type: "function", Function: deepseek.ToolFunction{Name: "read_file"}}}, nil
 }
 
 func (f *fakeTools) Call(_ context.Context, name string, _ map[string]any) (string, error) {
@@ -57,15 +57,15 @@ func (fakeDocs) Search(context.Context, string, int) ([]rag.Hit, error) {
 	return []rag.Hit{{Source: "docs/a.md", Text: "Source: docs/a.md\n\nX is a thing"}}, nil
 }
 
-func reply(s string) ollama.Message { return ollama.Message{Role: "assistant", Content: s} }
+func reply(s string) deepseek.Message { return deepseek.Message{Role: "assistant", Content: s} }
 
-func toolCall(name string) ollama.Message {
-	return ollama.Message{Role: "assistant", ToolCalls: []ollama.ToolCall{
-		{Function: ollama.ToolCallFunction{Name: name, Arguments: map[string]any{}}},
+func toolCall(name string) deepseek.Message {
+	return deepseek.Message{Role: "assistant", ToolCalls: []deepseek.ToolCall{
+		{Function: deepseek.ToolCallFunction{Name: name, Arguments: map[string]any{}}},
 	}}
 }
 
-func joined(msgs []ollama.Message) string {
+func joined(msgs []deepseek.Message) string {
 	var b strings.Builder
 	for _, m := range msgs {
 		b.WriteString(m.Content + "\n")
@@ -82,7 +82,7 @@ func newPlanner(llm *fakeLLM) *Planner {
 
 func TestDraft(t *testing.T) {
 	llm := &fakeLLM{
-		chat: func(int, []ollama.Message, []ollama.Tool) (ollama.Message, error) {
+		chat: func(int, []deepseek.Message, []deepseek.Tool) (deepseek.Message, error) {
 			return reply("notes: README.md documents X"), nil
 		},
 		jsons: []string{twoSteps},
@@ -111,7 +111,7 @@ func TestDraft(t *testing.T) {
 func TestReviseSkipsExploration(t *testing.T) {
 	llm := &fakeLLM{jsons: []string{twoSteps}}
 	history := taskHistory("document X", "notes here")
-	history = append(history, ollama.Message{Role: "assistant", Content: "old plan"})
+	history = append(history, deepseek.Message{Role: "assistant", Content: "old plan"})
 	plan, err := newPlanner(llm).Revise(context.Background(), history, "also update the changelog")
 	if err != nil {
 		t.Fatal(err)

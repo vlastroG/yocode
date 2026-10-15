@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/vlastroG/yocode/internal/ollama"
+	"github.com/vlastroG/yocode/internal/deepseek"
 )
 
 const usage = "usage: task <goal> [--yes] or task --plan <id>"
@@ -21,7 +21,7 @@ type Session struct {
 
 	mu      sync.Mutex
 	goal    string
-	history []ollama.Message // notes, goal, then plan/correction pairs
+	history []deepseek.Message // notes, goal, then plan/correction pairs
 	pending *Plan
 }
 
@@ -45,8 +45,8 @@ func (s *Session) Revise(ctx context.Context, feedback string) (Plan, error) {
 		return Plan{}, errors.New("no pending plan")
 	}
 	goal := s.goal
-	history := append(append([]ollama.Message(nil), s.history...),
-		ollama.Message{Role: "assistant", Content: s.pending.Markdown()})
+	history := append(append([]deepseek.Message(nil), s.history...),
+		deepseek.Message{Role: "assistant", Content: s.pending.Markdown()})
 	s.mu.Unlock()
 
 	plan, err := s.Planner.Revise(ctx, history, feedback)
@@ -56,7 +56,7 @@ func (s *Session) Revise(ctx context.Context, feedback string) (Plan, error) {
 	plan.Goal = goal
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.history = append(history, ollama.Message{Role: "user", Content: feedback})
+	s.history = append(history, deepseek.Message{Role: "user", Content: feedback})
 	s.pending = &plan
 	return plan, nil
 }

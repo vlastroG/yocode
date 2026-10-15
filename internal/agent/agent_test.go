@@ -7,21 +7,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vlastroG/yocode/internal/ollama"
+	"github.com/vlastroG/yocode/internal/deepseek"
 	"github.com/vlastroG/yocode/internal/rag"
 )
 
 type fakeLLM struct {
-	replies []ollama.Message
-	calls   [][]ollama.Message
+	replies []deepseek.Message
+	calls   [][]deepseek.Message
 	tools   []int // tool definitions sent with each call
 }
 
-func (f *fakeLLM) Chat(_ context.Context, _ string, msgs []ollama.Message, tools []ollama.Tool) (ollama.Message, error) {
+func (f *fakeLLM) Chat(_ context.Context, _ string, msgs []deepseek.Message, tools []deepseek.Tool) (deepseek.Message, error) {
 	f.tools = append(f.tools, len(tools))
-	f.calls = append(f.calls, append([]ollama.Message(nil), msgs...))
+	f.calls = append(f.calls, append([]deepseek.Message(nil), msgs...))
 	if len(f.replies) == 0 {
-		return ollama.Message{}, errors.New("no more replies")
+		return deepseek.Message{}, errors.New("no more replies")
 	}
 	r := f.replies[0]
 	f.replies = f.replies[1:]
@@ -30,8 +30,8 @@ func (f *fakeLLM) Chat(_ context.Context, _ string, msgs []ollama.Message, tools
 
 type fakeTools struct{ called []string }
 
-func (f *fakeTools) Tools(context.Context) ([]ollama.Tool, error) {
-	return []ollama.Tool{{Type: "function", Function: ollama.ToolFunction{Name: "git_status"}}}, nil
+func (f *fakeTools) Tools(context.Context) ([]deepseek.Tool, error) {
+	return []deepseek.Tool{{Type: "function", Function: deepseek.ToolFunction{Name: "git_status"}}}, nil
 }
 
 func (f *fakeTools) Call(_ context.Context, name string, _ map[string]any) (string, error) {
@@ -45,11 +45,11 @@ func (fakeDocs) Search(context.Context, string, int) ([]rag.Hit, error) {
 	return []rag.Hit{{Source: "project/README.md", Text: "Source: project/README.md\n\nyocode is a docs assistant"}}, nil
 }
 
-func reply(s string) ollama.Message { return ollama.Message{Role: "assistant", Content: s} }
+func reply(s string) deepseek.Message { return deepseek.Message{Role: "assistant", Content: s} }
 
-func toolCall(name string) ollama.Message {
-	return ollama.Message{Role: "assistant", ToolCalls: []ollama.ToolCall{
-		{Function: ollama.ToolCallFunction{Name: name, Arguments: map[string]any{}}},
+func toolCall(name string) deepseek.Message {
+	return deepseek.Message{Role: "assistant", ToolCalls: []deepseek.ToolCall{
+		{ID: "call-" + name, Type: "function", Function: deepseek.ToolCallFunction{Name: name, Arguments: map[string]any{}}},
 	}}
 }
 
@@ -58,7 +58,7 @@ func newAgent(llm *fakeLLM, tools *fakeTools) *Agent {
 }
 
 func TestAnswerUsesDocs(t *testing.T) {
-	llm := &fakeLLM{replies: []ollama.Message{reply("It is a docs assistant")}}
+	llm := &fakeLLM{replies: []deepseek.Message{reply("It is a docs assistant")}}
 	ans, err := newAgent(llm, &fakeTools{}).Ask(context.Background(), "what is this?")
 	if err != nil || ans != "It is a docs assistant" {
 		t.Fatalf("ans=%q err=%v", ans, err)
@@ -74,7 +74,7 @@ func TestAnswerUsesDocs(t *testing.T) {
 }
 
 func TestToolCallLoop(t *testing.T) {
-	llm := &fakeLLM{replies: []ollama.Message{toolCall("git_status"), reply("on main")}}
+	llm := &fakeLLM{replies: []deepseek.Message{toolCall("git_status"), reply("on main")}}
 	tools := &fakeTools{}
 	ans, err := newAgent(llm, tools).Ask(context.Background(), "which branch?")
 	if err != nil || ans != "on main" {
@@ -85,13 +85,13 @@ func TestToolCallLoop(t *testing.T) {
 	}
 	second := llm.calls[1]
 	toolMsg := second[len(second)-1]
-	if toolMsg.Role != "tool" || toolMsg.Content != "## main" || toolMsg.ToolName != "git_status" {
+	if toolMsg.Role != "tool" || toolMsg.Content != "## main" || toolMsg.ToolCallID != "call-git_status" {
 		t.Errorf("tool message = %+v", toolMsg)
 	}
 }
 
 func TestHistoryCarriesOver(t *testing.T) {
-	llm := &fakeLLM{replies: []ollama.Message{reply("a1"), reply("a2")}}
+	llm := &fakeLLM{replies: []deepseek.Message{reply("a1"), reply("a2")}}
 	a := newAgent(llm, &fakeTools{})
 	if _, err := a.Ask(context.Background(), "q1"); err != nil {
 		t.Fatal(err)
@@ -100,14 +100,14 @@ func TestHistoryCarriesOver(t *testing.T) {
 		t.Fatal(err)
 	}
 	second := llm.calls[1]
-	if !reflect.DeepEqual(second[1], ollama.Message{Role: "user", Content: "q1"}) ||
-		!reflect.DeepEqual(second[2], ollama.Message{Role: "assistant", Content: "a1"}) {
+	if !reflect.DeepEqual(second[1], deepseek.Message{Role: "user", Content: "q1"}) ||
+		!reflect.DeepEqual(second[2], deepseek.Message{Role: "assistant", Content: "a1"}) {
 		t.Errorf("history = %+v", second[1:3])
 	}
 }
 
 func TestStopsAfterMaxSteps(t *testing.T) {
-	var replies []ollama.Message
+	var replies []deepseek.Message
 	for range 10 {
 		replies = append(replies, toolCall("git_status"))
 	}
@@ -118,15 +118,15 @@ func TestStopsAfterMaxSteps(t *testing.T) {
 }
 
 func TestRememberAddsToHistory(t *testing.T) {
-	llm := &fakeLLM{replies: []ollama.Message{reply("the security one")}}
+	llm := &fakeLLM{replies: []deepseek.Message{reply("the security one")}}
 	a := newAgent(llm, &fakeTools{})
 	a.Remember("/review main feature", "# Review of main...feature")
 	if _, err := a.Ask(context.Background(), "which finding is worst?"); err != nil {
 		t.Fatal(err)
 	}
 	msgs := llm.calls[0]
-	if !reflect.DeepEqual(msgs[1], ollama.Message{Role: "user", Content: "/review main feature"}) ||
-		!reflect.DeepEqual(msgs[2], ollama.Message{Role: "assistant", Content: "# Review of main...feature"}) {
+	if !reflect.DeepEqual(msgs[1], deepseek.Message{Role: "user", Content: "/review main feature"}) ||
+		!reflect.DeepEqual(msgs[2], deepseek.Message{Role: "assistant", Content: "# Review of main...feature"}) {
 		t.Errorf("history = %+v", msgs[1:3])
 	}
 }

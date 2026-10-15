@@ -10,18 +10,18 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/vlastroG/yocode/internal/ollama"
+	"github.com/vlastroG/yocode/internal/deepseek"
 	"github.com/vlastroG/yocode/internal/rag"
 )
 
 const (
 	defaultMaxFiles = 25   // reviewable files per run unless Pipeline.MaxFiles or --max-files says otherwise
-	maxDiffChars    = 8000 // per LLM call, so diff + docs + answer fit an 8k-token context
+	maxDiffChars    = 8000 // per LLM call, so each review stays focused on one part of a file
 	docHits         = 3
 )
 
 type LLM interface {
-	ChatJSON(ctx context.Context, model string, msgs []ollama.Message, schema json.RawMessage, out any) error
+	ChatJSON(ctx context.Context, model string, msgs []deepseek.Message, schema json.RawMessage, out any) error
 }
 
 type Tools interface {
@@ -172,7 +172,7 @@ func (p *Pipeline) reviewFile(ctx context.Context, rng, commits string, c fileCh
 		var out struct {
 			Findings []Finding `json:"findings"`
 		}
-		msgs := []ollama.Message{
+		msgs := []deepseek.Message{
 			{Role: "system", Content: p.withLanguage(fileSystemPrompt)},
 			{Role: "user", Content: fileRequest(rng, commits, c, hits, part, i+1, len(parts))},
 		}
@@ -208,7 +208,7 @@ func (p *Pipeline) summarize(ctx context.Context, rep *Report, commits string) e
 		Summary  string    `json:"summary"`
 		Findings []Finding `json:"findings"`
 	}
-	msgs := []ollama.Message{
+	msgs := []deepseek.Message{
 		{Role: "system", Content: p.withLanguage(summarySystemPrompt)},
 		{Role: "user", Content: b.String()},
 	}

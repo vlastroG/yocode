@@ -1,8 +1,9 @@
-// Package app wires yocode's parts (Ollama, docs index, MCP tools) for the CLI, the chat and tests.
+// Package app wires yocode's parts (DeepSeek, local embeddings and docs index, MCP tools) for the CLI, the chat and tests.
 package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,10 +13,10 @@ import (
 	"github.com/vlastroG/yocode/internal/agent"
 	"github.com/vlastroG/yocode/internal/commands"
 	"github.com/vlastroG/yocode/internal/config"
+	"github.com/vlastroG/yocode/internal/deepseek"
 	"github.com/vlastroG/yocode/internal/docs"
 	"github.com/vlastroG/yocode/internal/mcpclient"
 	"github.com/vlastroG/yocode/internal/mcpserver"
-	"github.com/vlastroG/yocode/internal/ollama"
 	"github.com/vlastroG/yocode/internal/rag"
 	"github.com/vlastroG/yocode/internal/review"
 	"github.com/vlastroG/yocode/internal/task"
@@ -31,12 +32,15 @@ type App struct {
 	readOnly agent.Tools
 }
 
-// Setup pulls missing models, builds or reuses the docs index and wires everything to the MCP
+// Setup pulls the embedding model if missing, builds or reuses the docs index and wires everything to the MCP
 // client that connect returns. main passes mcpclient.Start of the yocode-mcp binary; tests pass an
 // in-memory server.
 func Setup(ctx context.Context, cfg config.Config, connect func(context.Context) (*mcpclient.Client, error)) (*App, error) {
-	llm := &ollama.Client{BaseURL: cfg.OllamaURL, NumCtx: cfg.NumCtx, Seed: cfg.Seed, Think: cfg.Think}
-	if err := llm.EnsureModels(ctx, os.Stderr, cfg.ChatModel, cfg.EmbedModel); err != nil {
+	if cfg.APIKey == "" {
+		return nil, errors.New("DEEPSEEK_API_KEY is not set (put it in .env)")
+	}
+	llm := &deepseek.Client{BaseURL: cfg.APIURL, APIKey: cfg.APIKey, Retries: 3}
+	if err := rag.EnsureModel(ctx, cfg.OllamaURL, cfg.EmbedModel, os.Stderr); err != nil {
 		return nil, fmt.Errorf("ollama at %s: %w", cfg.OllamaURL, err)
 	}
 

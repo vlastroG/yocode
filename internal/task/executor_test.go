@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/vlastroG/yocode/internal/agent"
-	"github.com/vlastroG/yocode/internal/ollama"
+	"github.com/vlastroG/yocode/internal/deepseek"
 )
 
 var testPlan = Plan{ID: "p1", Goal: "document X", Steps: []Step{
@@ -24,7 +24,7 @@ type executorRig struct {
 	exec     *Executor
 }
 
-func newRig(chat func(int, []ollama.Message, []ollama.Tool) (ollama.Message, error)) *executorRig {
+func newRig(chat func(int, []deepseek.Message, []deepseek.Tool) (deepseek.Message, error)) *executorRig {
 	r := &executorRig{llm: &fakeLLM{chat: chat}, status: &fakeTools{}}
 	r.exec = &Executor{
 		LLM: r.llm, Model: "m", Status: r.status,
@@ -37,10 +37,10 @@ func newRig(chat func(int, []ollama.Message, []ollama.Tool) (ollama.Message, err
 	return r
 }
 
-func script(replies ...ollama.Message) func(int, []ollama.Message, []ollama.Tool) (ollama.Message, error) {
-	return func(i int, _ []ollama.Message, _ []ollama.Tool) (ollama.Message, error) {
+func script(replies ...deepseek.Message) func(int, []deepseek.Message, []deepseek.Tool) (deepseek.Message, error) {
+	return func(i int, _ []deepseek.Message, _ []deepseek.Tool) (deepseek.Message, error) {
 		if i >= len(replies) {
-			return ollama.Message{}, errors.New("unexpected call")
+			return deepseek.Message{}, errors.New("unexpected call")
 		}
 		return replies[i], nil
 	}
@@ -83,9 +83,9 @@ func TestRunStepsWithSubagents(t *testing.T) {
 }
 
 func TestFailedStepStopsRun(t *testing.T) {
-	r := newRig(func(i int, _ []ollama.Message, _ []ollama.Tool) (ollama.Message, error) {
+	r := newRig(func(i int, _ []deepseek.Message, _ []deepseek.Tool) (deepseek.Message, error) {
 		if i == 0 {
-			return ollama.Message{}, errors.New("model crashed")
+			return deepseek.Message{}, errors.New("model crashed")
 		}
 		return reply("partial result"), nil
 	})
@@ -155,7 +155,7 @@ func TestResultMarkdown(t *testing.T) {
 }
 
 func TestReadStepWrapsUpWhenOutOfCalls(t *testing.T) {
-	replies := make([]ollama.Message, stepMaxSteps)
+	replies := make([]deepseek.Message, stepMaxSteps)
 	for i := range replies {
 		replies[i] = toolCall("read_file")
 	}

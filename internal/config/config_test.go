@@ -14,20 +14,20 @@ func TestDefaults(t *testing.T) {
 	if c.OllamaURL != "http://localhost:11434" {
 		t.Errorf("OllamaURL = %q", c.OllamaURL)
 	}
-	if c.ChatModel != "qwen3.5:9b-q4_K_M" || c.EmbedModel != "bge-m3" {
+	if c.ChatModel != "deepseek-flash" || c.EmbedModel != "bge-m3" {
 		t.Errorf("models = %q, %q", c.ChatModel, c.EmbedModel)
 	}
 	if c.ProjectDir != "/project" || c.DocsDir != "/docs" || c.DataDir != "/data" {
 		t.Errorf("dirs = %q %q %q", c.ProjectDir, c.DocsDir, c.DataDir)
 	}
-	if c.MCPCommand != "yocode-mcp" || c.NumCtx != 16384 || c.Reindex {
-		t.Errorf("mcp=%q numctx=%d reindex=%v", c.MCPCommand, c.NumCtx, c.Reindex)
+	if c.MCPCommand != "yocode-mcp" || c.Reindex {
+		t.Errorf("mcp=%q reindex=%v", c.MCPCommand, c.Reindex)
 	}
 	if !strings.HasPrefix(c.IndexKey, "docs-") {
 		t.Errorf("IndexKey = %q", c.IndexKey)
 	}
-	if c.Seed != 42 || c.Think != nil || !c.TaskSingle {
-		t.Errorf("seed=%d think=%v single=%v", c.Seed, c.Think, c.TaskSingle)
+	if c.APIURL != "https://api.deepseek.com" || c.APIKey != "" || !c.TaskSingle {
+		t.Errorf("api=%q key=%q single=%v", c.APIURL, c.APIKey, c.TaskSingle)
 	}
 	if c.ReviewLanguage != "English" || c.ReviewMaxFiles != 25 {
 		t.Errorf("review settings = %q, %d", c.ReviewLanguage, c.ReviewMaxFiles)
@@ -37,16 +37,17 @@ func TestDefaults(t *testing.T) {
 func TestOverrides(t *testing.T) {
 	c := FromEnv(env(map[string]string{
 		"OLLAMA_URL":       "http://ollama:11434/",
-		"CHAT_MODEL":       "llama3.1:8b",
+		"CHAT_MODEL":       "deepseek-v4-pro",
 		"REINDEX":          "TRUE",
-		"NUM_CTX":          "4096",
+		"DEEPSEEK_API_KEY": " sk-1 ",
+		"DEEPSEEK_URL":     "https://proxy.example/",
 		"REVIEW_LANGUAGE":  "Russian",
 		"REVIEW_MAX_FILES": "80",
 	}))
 	if c.OllamaURL != "http://ollama:11434" {
 		t.Errorf("OllamaURL = %q, want trailing slash trimmed", c.OllamaURL)
 	}
-	if c.ChatModel != "llama3.1:8b" || !c.Reindex || c.NumCtx != 4096 {
+	if c.ChatModel != "deepseek-v4-pro" || !c.Reindex || c.APIKey != "sk-1" || c.APIURL != "https://proxy.example" {
 		t.Errorf("got %+v", c)
 	}
 	if c.ReviewLanguage != "Russian" || c.ReviewMaxFiles != 80 {
@@ -71,16 +72,11 @@ func TestIndexKeyDependsOnDocsAndModel(t *testing.T) {
 	}
 }
 
-func TestSeedThinkTaskMode(t *testing.T) {
-	c := FromEnv(env(map[string]string{"THINK": "false", "SEED": "0", "TASK_MODE": "single"}))
-	if c.Think == nil || *c.Think || c.Seed != 0 || !c.TaskSingle {
-		t.Errorf("think=%v seed=%d single=%v", c.Think, c.Seed, c.TaskSingle)
+func TestTaskMode(t *testing.T) {
+	if c := FromEnv(env(map[string]string{"TASK_MODE": "other"})); !c.TaskSingle {
+		t.Error("unknown TASK_MODE should run in single mode")
 	}
-	c = FromEnv(env(map[string]string{"THINK": "true", "TASK_MODE": "other"}))
-	if c.Think == nil || !*c.Think || !c.TaskSingle {
-		t.Errorf("think=%v single=%v", c.Think, c.TaskSingle)
-	}
-	if c = FromEnv(env(map[string]string{"TASK_MODE": "subagents"})); c.TaskSingle {
+	if c := FromEnv(env(map[string]string{"TASK_MODE": "subagents"})); c.TaskSingle {
 		t.Error("TASK_MODE=subagents runs in single mode")
 	}
 }

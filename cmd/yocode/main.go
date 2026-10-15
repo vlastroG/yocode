@@ -1,4 +1,4 @@
-// Command yocode is a local assistant for a project's docs and git repository.
+// Command yocode is a code assistant for a project's docs and git repository: DeepSeek chat, local docs index.
 package main
 
 import (
@@ -22,22 +22,21 @@ const configHelp = `
 Configuration (environment; with docker compose set these in .env):
   PROJECT_PATH     host path of the project (mounted at /project)
   DOCS_PATH        optional host path of a separate docs project (mounted at /docs)
-  CHAT_MODEL       Ollama chat model (default qwen3.5:9b-q4_K_M)
-  SEED             sampling seed for reproducible runs, 0 disables (default 42)
-  THINK            true/false to enable/disable model thinking (compose default false; unset: model's own)
-  NUM_CTX          chat context window in tokens (default 16384)
+  DEEPSEEK_API_KEY DeepSeek API key (required for everything but help)
+  CHAT_MODEL       DeepSeek chat model (default deepseek-flash; or deepseek-v4-pro)
+  DEEPSEEK_URL     DeepSeek API base URL (default https://api.deepseek.com)
   TASK_MODE        single (default: one conversation, access of the widest step) or
                    subagents (one agent per step, with that step's access)
   GIT_USER_NAME    author and committer name of task commits (default yocode)
   GIT_USER_EMAIL   author and committer email of task commits (default yocode@localhost)
-  EMBED_MODEL      Ollama embedding model (default bge-m3)
+  EMBED_MODEL      local Ollama embedding model for the docs index (default bge-m3)
   REVIEW_LANGUAGE  language of review reports (default English)
   REVIEW_MAX_FILES files a review may cover; more stops with a warning (default 25)
   REINDEX          true to rebuild the docs index on start
 `
 
 func usage(cmds commands.Set) string {
-	return "yocode - local assistant for your project's docs and git repository.\n\nUsage: yocode [command]\n" +
+	return "yocode - code assistant for your project's docs and git repository (DeepSeek chat, local docs index).\n\nUsage: yocode [command]\n" +
 		commands.UsageLine("(none)", "start the interactive chat; the commands below work there as /<name>") +
 		cmds.CLI().Usage("") +
 		commands.UsageLine("help", "show this help") +

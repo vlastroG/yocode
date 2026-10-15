@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/vlastroG/yocode/internal/ollama"
+	"github.com/vlastroG/yocode/internal/deepseek"
 )
 
 const defaultMaxSteps = 6
@@ -22,7 +22,7 @@ type Loop struct {
 }
 
 // Run lists the tools, then calls the model and runs its tool calls until it answers without one.
-func (l Loop) Run(ctx context.Context, msgs []ollama.Message) (string, error) {
+func (l Loop) Run(ctx context.Context, msgs []deepseek.Message) (string, error) {
 	defs, err := l.Tools.Tools(ctx)
 	if err != nil {
 		return "", fmt.Errorf("list tools: %w", err)
@@ -44,15 +44,19 @@ func (l Loop) Run(ctx context.Context, msgs []ollama.Message) (string, error) {
 			if l.OnToolCall != nil {
 				l.OnToolCall(tc.Function.Name, tc.Function.Arguments)
 			}
-			out, err := l.Tools.Call(ctx, tc.Function.Name, tc.Function.Arguments)
+			var out string
+			err := tc.Function.ArgsErr
+			if err == nil {
+				out, err = l.Tools.Call(ctx, tc.Function.Name, tc.Function.Arguments)
+			}
 			if err != nil {
 				out = "error: " + err.Error()
 			}
-			msgs = append(msgs, ollama.Message{Role: "tool", Content: out, ToolName: tc.Function.Name})
+			msgs = append(msgs, deepseek.Message{Role: "tool", Content: out, ToolCallID: tc.ID})
 		}
 	}
 	if l.Wrapup != "" {
-		resp, err := l.LLM.Chat(ctx, l.Model, append(msgs, ollama.Message{Role: "user", Content: l.Wrapup}), nil)
+		resp, err := l.LLM.Chat(ctx, l.Model, append(msgs, deepseek.Message{Role: "user", Content: l.Wrapup}), nil)
 		if err != nil {
 			return "", err
 		}

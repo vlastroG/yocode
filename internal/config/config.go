@@ -12,9 +12,8 @@ type Config struct {
 	OllamaURL  string
 	ChatModel  string
 	EmbedModel string
-	NumCtx     int
-	Seed       int   // > 0 makes chat requests deterministic; 0 disables
-	Think      *bool // nil = leave to the model's default
+	APIKey     string // DEEPSEEK_API_KEY
+	APIURL     string // DeepSeek API base URL
 
 	TaskSingle bool // one conversation for all task steps; TASK_MODE=subagents turns it off
 
@@ -41,10 +40,10 @@ func FromEnv(getenv func(string) string) Config {
 	}
 	c := Config{
 		OllamaURL:      strings.TrimRight(get("OLLAMA_URL", "http://localhost:11434"), "/"),
-		ChatModel:      get("CHAT_MODEL", "qwen3.5:9b-q4_K_M"),
+		ChatModel:      get("CHAT_MODEL", "deepseek-flash"),
 		EmbedModel:     get("EMBED_MODEL", "bge-m3"),
-		NumCtx:         16384,
-		Seed:           42,
+		APIKey:         strings.TrimSpace(getenv("DEEPSEEK_API_KEY")),
+		APIURL:         strings.TrimRight(get("DEEPSEEK_URL", "https://api.deepseek.com"), "/"),
 		TaskSingle:     getenv("TASK_MODE") != "subagents",
 		ProjectDir:     get("PROJECT_DIR", "/project"),
 		DocsDir:        get("DOCS_DIR", "/docs"),
@@ -53,16 +52,6 @@ func FromEnv(getenv func(string) string) Config {
 		Reindex:        parseBool(getenv("REINDEX")),
 		ReviewLanguage: get("REVIEW_LANGUAGE", "English"),
 		ReviewMaxFiles: 25,
-	}
-	if n, err := strconv.Atoi(getenv("NUM_CTX")); err == nil && n > 0 {
-		c.NumCtx = n
-	}
-	if n, err := strconv.Atoi(getenv("SEED")); err == nil && n >= 0 {
-		c.Seed = n
-	}
-	if v := strings.TrimSpace(getenv("THINK")); v != "" {
-		b := parseBool(v)
-		c.Think = &b
 	}
 	if n, err := strconv.Atoi(getenv("REVIEW_MAX_FILES")); err == nil && n > 0 {
 		c.ReviewMaxFiles = n

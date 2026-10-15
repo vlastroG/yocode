@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/vlastroG/yocode/internal/agent"
-	"github.com/vlastroG/yocode/internal/ollama"
+	"github.com/vlastroG/yocode/internal/deepseek"
 	"github.com/vlastroG/yocode/internal/rag"
 )
 
@@ -48,7 +48,7 @@ var planSchema = json.RawMessage(`{"type":"object","required":["steps"],"propert
 
 type LLM interface {
 	agent.LLM
-	ChatJSON(ctx context.Context, model string, msgs []ollama.Message, schema json.RawMessage, out any) error
+	ChatJSON(ctx context.Context, model string, msgs []deepseek.Message, schema json.RawMessage, out any) error
 }
 
 type Planner struct {
@@ -68,7 +68,7 @@ func (p *Planner) Draft(ctx context.Context, goal string) (Plan, string, error) 
 	}
 	loop := agent.Loop{LLM: p.LLM, Model: p.Model, Tools: p.Tools, MaxSteps: exploreSteps, OnToolCall: p.OnToolCall,
 		Wrapup: exploreWrapup}
-	notes, err := loop.Run(ctx, []ollama.Message{
+	notes, err := loop.Run(ctx, []deepseek.Message{
 		{Role: "system", Content: exploreSystemPrompt},
 		{Role: "user", Content: docsText(hits) + "Goal: " + goal},
 	})
@@ -82,14 +82,14 @@ func (p *Planner) Draft(ctx context.Context, goal string) (Plan, string, error) 
 		return Plan{}, "", err
 	}
 	plan.Goal = goal
-	// a small model ignores some planning rules; pointing at the broken ones usually fixes them
+	// the model sometimes ignores planning rules; pointing at the broken ones usually fixes them
 	for range planRetries {
 		problems := planProblems(goal, plan)
 		if len(problems) == 0 {
 			break
 		}
-		retry := append(history[:len(history):len(history)], ollama.Message{Role: "assistant", Content: plan.Markdown()},
-			ollama.Message{Role: "user", Content: "Fix the plan and return all of it:\n- " + strings.Join(problems, "\n- ")})
+		retry := append(history[:len(history):len(history)], deepseek.Message{Role: "assistant", Content: plan.Markdown()},
+			deepseek.Message{Role: "user", Content: "Fix the plan and return all of it:\n- " + strings.Join(problems, "\n- ")})
 		fixed, err := p.plan(ctx, retry)
 		if err != nil {
 			break
@@ -150,13 +150,13 @@ func missingPaths(goal string, p Plan) []string {
 
 // Revise replans from the task history (notes, goal, then plan/correction pairs) and the new
 // feedback, without exploring again. The caller sets the plan's Goal.
-func (p *Planner) Revise(ctx context.Context, history []ollama.Message, feedback string) (Plan, error) {
-	msgs := append(append([]ollama.Message(nil), history...), ollama.Message{Role: "user", Content: feedback})
+func (p *Planner) Revise(ctx context.Context, history []deepseek.Message, feedback string) (Plan, error) {
+	msgs := append(append([]deepseek.Message(nil), history...), deepseek.Message{Role: "user", Content: feedback})
 	return p.plan(ctx, msgs)
 }
 
-func (p *Planner) plan(ctx context.Context, history []ollama.Message) (Plan, error) {
-	msgs := append([]ollama.Message{{Role: "system", Content: planSystemPrompt}}, history...)
+func (p *Planner) plan(ctx context.Context, history []deepseek.Message) (Plan, error) {
+	msgs := append([]deepseek.Message{{Role: "system", Content: planSystemPrompt}}, history...)
 	var plan Plan
 	if err := p.LLM.ChatJSON(ctx, p.Model, msgs, planSchema, &plan); err != nil {
 		return Plan{}, fmt.Errorf("plan: %w", err)
@@ -169,8 +169,8 @@ func (p *Planner) plan(ctx context.Context, history []ollama.Message) (Plan, err
 
 // taskHistory starts the planning conversation that corrections are appended to. The goal comes
 // last, so the plan follows it rather than the notes (e.g. a file the goal names that doesn't exist yet).
-func taskHistory(goal, notes string) []ollama.Message {
-	return []ollama.Message{
+func taskHistory(goal, notes string) []deepseek.Message {
+	return []deepseek.Message{
 		{Role: "user", Content: "Notes from exploring the repository:\n" + notes},
 		{Role: "user", Content: "Goal: " + goal + "\n\nPlan this goal. Use the file paths it names exactly."},
 	}

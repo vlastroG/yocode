@@ -1,7 +1,8 @@
 services:
   ollama:
     image: ollama/ollama:0.34.4
-    # Runs on the CPU by default; add compose.gpu.yaml for an NVIDIA GPU (see .env.example).
+    # Local embeddings for the docs index only (the chat model is DeepSeek in the cloud).
+    # Runs on the CPU by default; compose.gpu.yaml adds an NVIDIA GPU (see .env.example).
     volumes:
       - ollama-models:/root/.ollama
     healthcheck:
@@ -22,10 +23,9 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       PROJECT_HOST_PATH: ${PROJECT_PATH:?set PROJECT_PATH in .env}
       DOCS_HOST_PATH: ${DOCS_PATH:-}
-      CHAT_MODEL: ${CHAT_MODEL:-qwen3.5:9b-q4_K_M}
-      NUM_CTX: ${NUM_CTX:-16384}
-      THINK: ${THINK:-false}
-      SEED: ${SEED:-42}
+      CHAT_MODEL: ${CHAT_MODEL:-deepseek-flash}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_URL: ${DEEPSEEK_URL:-}
       TASK_MODE: ${TASK_MODE:-single}
       GIT_AUTHOR_NAME: ${GIT_USER_NAME:-yocode}
       GIT_COMMITTER_NAME: ${GIT_USER_NAME:-yocode}
@@ -40,7 +40,7 @@ services:
       - ${DOCS_PATH:-./.nodocs}:/docs:ro
       - yocode-data:/data
 
-  # Integration tests on a fixture repo against the ollama service: docker compose run --rm itest
+  # Integration tests on a fixture repo (DeepSeek + local embeddings): docker compose run --rm itest
   itest:
     build:
       context: .
@@ -51,11 +51,10 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
-      CHAT_MODEL: ${CHAT_MODEL:-qwen3.5:9b-q4_K_M}
+      CHAT_MODEL: ${CHAT_MODEL:-deepseek-flash}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_URL: ${DEEPSEEK_URL:-}
       EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
-      NUM_CTX: ${NUM_CTX:-16384}
-      THINK: ${THINK:-false}
-      SEED: ${SEED:-42}
       TASK_MODE: ${TASK_MODE:-single}
 
 volumes:

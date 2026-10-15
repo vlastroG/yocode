@@ -1,22 +1,18 @@
 # yocode
 
-A local code assistant. It answers questions about a project using its documentation (RAG, hybrid semantic + keyword search) and git/file tools exposed through an MCP server, and carries out high-level tasks by editing files and committing locally. Everything runs in Docker with Ollama; nothing leaves your machine.
+A code assistant. It answers questions about a project using its documentation (RAG, hybrid semantic + keyword search) and git/file tools exposed through an MCP server, and carries out high-level tasks by editing files and committing locally. It runs in Docker: the chat model is DeepSeek in the cloud, the docs index (embeddings) stays local in Ollama.
+
+**Privacy:** questions, docs excerpts and everything the tools read (files, diffs, git history) are sent to DeepSeek. Embeddings and the docs index never leave your machine.
 
 ## Requirements
 
-Docker Desktop (or Docker Engine on Linux) with about 10 GB of memory available to containers for the default models (qwen3.5 9B, ~6.6 GB, plus bge-m3).
-
-| Platform | Setup | Speed |
-|---|---|---|
-| Windows / Linux with an NVIDIA GPU (8 GB VRAM works; at the 16k context ~16% of the model then runs on the CPU) | Enable `compose.gpu.yaml` via the `COMPOSE_FILE` lines in `.env` | seconds per answer, ~1 min per task |
-| Any machine, CPU only (incl. Mac in Docker) | Nothing to do: Ollama runs on the CPU by default | much slower (untested with the 9B model) |
-| Mac, Apple GPU | Install [Ollama](https://ollama.com) natively, set `OLLAMA_URL=http://host.docker.internal:11434` and run with `--no-deps` | fast (untested) |
-
-Docker can't pass the Apple GPU into containers, which is why the native Ollama setup exists. On a Mac, check that Docker Desktop's memory limit (Settings → Resources) is at least 10 GB when running Ollama in Docker.
+- Docker Desktop (or Docker Engine on Linux) and network access to `api.deepseek.com`.
+- A DeepSeek API key (`DEEPSEEK_API_KEY` in `.env`).
+- About 2 GB for the local embedding model (bge-m3). It runs on the CPU by default; an NVIDIA GPU (`compose.gpu.yaml` via the `COMPOSE_FILE` lines in `.env`) only speeds up building the docs index.
 
 ## Usage
 
-1. Copy `.env.example` to `.env` and set `PROJECT_PATH` (and optionally `DOCS_PATH` for a separate docs project, e.g. a Hugo site).
+1. Copy `.env.example` to `.env` and set `DEEPSEEK_API_KEY` and `PROJECT_PATH` (and optionally `DOCS_PATH` for a separate docs project, e.g. a Hugo site).
 2. Start yocode. Without a command you get the interactive chat; with a command the container runs it and exits:
 
    | Command | What it does |
@@ -28,11 +24,11 @@ Docker can't pass the Apple GPU into containers, which is why the native Ollama 
    | `docker compose run --rm yocode diff` | Show uncommitted changes, including new files |
    | `docker compose run --rm --no-deps yocode help` | List commands and settings (doesn't start Ollama) |
 
-   With a native Ollama (`OLLAMA_URL` set), add `--no-deps` so the bundled Ollama container isn't started: `docker compose run --rm --no-deps yocode`
+   With an Ollama outside Docker (`OLLAMA_URL` set), add `--no-deps` so the bundled Ollama container isn't started: `docker compose run --rm --no-deps yocode`
 
 The chat needs a real terminal: use PowerShell or Windows Terminal (in Git Bash's mintty, prefix the command with `winpty`). Without a terminal, run a command with `-T`: `docker compose run --rm -T yocode ask "..."`.
 
-The first run downloads the models (about 8 GB) and builds the docs index. Later runs reuse both. Set `REINDEX=true` in `.env` (or pass `-e REINDEX=true`) to rebuild the index after the docs change. Stop Ollama with `docker compose down`.
+The first run downloads the embedding model and builds the docs index. Later runs reuse both. Set `REINDEX=true` in `.env` (or pass `-e REINDEX=true`) to rebuild the index after the docs change. Stop Ollama with `docker compose down`.
 
 ## Reviewing a branch
 
@@ -47,7 +43,7 @@ The branches must exist in your local clone: run `git fetch` on the host first, 
 - Correct the plan by typing in the chat (or any text at the CLI prompt); the plan is revised, repeat until it fits.
 - `/go` (CLI: Enter) runs it, `/cancel` (CLI: `q`) drops it. `--yes` skips the prompt.
 - All steps run in one conversation with the access of the plan's widest step; the final answer summarizes the result. `TASK_MODE=subagents` runs every step in its own subagent with that step's access instead (fewer scenarios passed in our tests).
-- Approved plans are saved as `/data/tasks/<id>.json` and results as `<id>.md` in the `yocode-data` volume. `task --plan <id>` replays a saved plan as `<id>-replay-<time>`; `SEED` makes runs reproducible.
+- Approved plans are saved as `/data/tasks/<id>.json` and results as `<id>.md` in the `yocode-data` volume. `task --plan <id>` replays a saved plan as `<id>-replay-<time>`; requests use temperature 0, but a cloud model doesn't guarantee identical runs.
 - Review the changes with `/diff` (or `yocode diff`). The project is mounted writable, and there are no pull, push or fetch tools: do those manually on the host.
 - Commits made by yocode skip the repo's git hooks and signing (`--no-verify`, `commit.gpgsign=false`).
 - After a task edits docs, run with `REINDEX=true` once to refresh the docs index.
@@ -58,18 +54,17 @@ The branches must exist in your local clone: run `git fetch` on the host first, 
 |---|---|---|
 | `PROJECT_PATH` | required | Project to work with, mounted writable |
 | `DOCS_PATH` | none | Separate docs project |
-| `CHAT_MODEL` | `qwen3.5:9b-q4_K_M` | Ollama chat model (must support tool calling) |
-| `NUM_CTX` | `16384` | Chat context window in tokens |
-| `THINK` | `false` (compose; unset: model's own) | Model thinking on/off |
-| `SEED` | `42` | Sampling seed (temperature 0); `0` disables |
+| `DEEPSEEK_API_KEY` | required | DeepSeek API key |
+| `CHAT_MODEL` | `deepseek-flash` | DeepSeek chat model (`deepseek-flash` or `deepseek-v4-pro`) |
+| `DEEPSEEK_URL` | `https://api.deepseek.com` | DeepSeek API base URL |
 | `TASK_MODE` | `single` | `single` (one conversation, widest step access) or `subagents` (one agent per step, per-step access) |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `yocode` / `yocode@localhost` | Author and committer of task commits |
-| `EMBED_MODEL` | `bge-m3` | Ollama embedding model (multilingual; handles Russian docs) |
+| `EMBED_MODEL` | `bge-m3` | Local Ollama embedding model (multilingual; handles Russian docs) |
 | `REINDEX` | `false` | Rebuild the docs index on start |
 | `REVIEW_LANGUAGE` | `English` | Language of review reports |
 | `REVIEW_MAX_FILES` | `25` | Files a review may cover; above it the review stops with a warning (override per run with `--max-files N`) |
-| `OLLAMA_URL` | `http://ollama:11434` | Ollama to use; point it at a native install to bypass the bundled container |
-| `COMPOSE_FILE` | `compose.yaml` | Set to `compose.yaml,compose.gpu.yaml` (with `COMPOSE_PATH_SEPARATOR=,`) for an NVIDIA GPU |
+| `OLLAMA_URL` | `http://ollama:11434` | Ollama for embeddings; point it at a native install to bypass the bundled container |
+| `COMPOSE_FILE` | `compose.yaml` | Set to `compose.yaml,compose.gpu.yaml` (with `COMPOSE_PATH_SEPARATOR=,`) for embeddings on an NVIDIA GPU |
 
 ## Tools available to the assistant
 

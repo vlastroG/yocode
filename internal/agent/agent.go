@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vlastroG/yocode/internal/ollama"
+	"github.com/vlastroG/yocode/internal/deepseek"
 	"github.com/vlastroG/yocode/internal/rag"
 )
 
@@ -25,11 +25,11 @@ const (
 )
 
 type LLM interface {
-	Chat(ctx context.Context, model string, msgs []ollama.Message, tools []ollama.Tool) (ollama.Message, error)
+	Chat(ctx context.Context, model string, msgs []deepseek.Message, tools []deepseek.Tool) (deepseek.Message, error)
 }
 
 type Tools interface {
-	Tools(ctx context.Context) ([]ollama.Tool, error)
+	Tools(ctx context.Context) ([]deepseek.Tool, error)
 	Call(ctx context.Context, name string, args map[string]any) (string, error)
 }
 
@@ -45,7 +45,7 @@ type Agent struct {
 	// OnToolCall, if set, is called before each tool call so the UI can show progress.
 	OnToolCall func(name string, args map[string]any)
 
-	history []ollama.Message
+	history []deepseek.Message
 }
 
 func (a *Agent) Ask(ctx context.Context, question string) (string, error) {
@@ -54,9 +54,9 @@ func (a *Agent) Ask(ctx context.Context, question string) (string, error) {
 		return "", fmt.Errorf("search docs: %w", err)
 	}
 
-	msgs := []ollama.Message{{Role: "system", Content: systemPrompt}}
+	msgs := []deepseek.Message{{Role: "system", Content: systemPrompt}}
 	msgs = append(msgs, a.history...)
-	msgs = append(msgs, ollama.Message{Role: "user", Content: withDocs(question, hits)})
+	msgs = append(msgs, deepseek.Message{Role: "user", Content: withDocs(question, hits)})
 
 	loop := Loop{LLM: a.LLM, Model: a.Model, Tools: a.Tools, MaxSteps: maxSteps, OnToolCall: a.OnToolCall}
 	answer, err := loop.Run(ctx, msgs)
@@ -71,8 +71,8 @@ func (a *Agent) Ask(ctx context.Context, question string) (string, error) {
 // pairs, and the UI adds review reports so follow-up questions can refer to them.
 func (a *Agent) Remember(question, answer string) {
 	a.history = append(a.history,
-		ollama.Message{Role: "user", Content: question},
-		ollama.Message{Role: "assistant", Content: answer})
+		deepseek.Message{Role: "user", Content: question},
+		deepseek.Message{Role: "assistant", Content: answer})
 	if len(a.history) > maxHistory {
 		a.history = a.history[len(a.history)-maxHistory:]
 	}

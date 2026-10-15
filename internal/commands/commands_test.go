@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/vlastroG/yocode/internal/agent"
-	"github.com/vlastroG/yocode/internal/ollama"
+	"github.com/vlastroG/yocode/internal/deepseek"
 	"github.com/vlastroG/yocode/internal/rag"
 	"github.com/vlastroG/yocode/internal/task"
 )
@@ -60,21 +60,21 @@ const testPlan = `{"steps":[{"title":"Write CHANGELOG","instructions":"create CH
 
 // fakeLLM replies "ok" to every chat and returns testPlan for every plan request.
 type fakeLLM struct {
-	chats     [][]ollama.Message
+	chats     [][]deepseek.Message
 	planCalls int
 	rootErr   error // returned by the call that writes a task's result
 	reviseErr error // returned by plan requests after the first
 }
 
-func (f *fakeLLM) Chat(_ context.Context, _ string, msgs []ollama.Message, _ []ollama.Tool) (ollama.Message, error) {
+func (f *fakeLLM) Chat(_ context.Context, _ string, msgs []deepseek.Message, _ []deepseek.Tool) (deepseek.Message, error) {
 	f.chats = append(f.chats, msgs)
 	if f.rootErr != nil && strings.HasPrefix(msgs[0].Content, "You report the result") {
-		return ollama.Message{}, f.rootErr
+		return deepseek.Message{}, f.rootErr
 	}
-	return ollama.Message{Role: "assistant", Content: "ok"}, nil
+	return deepseek.Message{Role: "assistant", Content: "ok"}, nil
 }
 
-func (f *fakeLLM) ChatJSON(_ context.Context, _ string, _ []ollama.Message, _ json.RawMessage, out any) error {
+func (f *fakeLLM) ChatJSON(_ context.Context, _ string, _ []deepseek.Message, _ json.RawMessage, out any) error {
 	f.planCalls++
 	if f.planCalls > 1 && f.reviseErr != nil {
 		return f.reviseErr
@@ -84,7 +84,7 @@ func (f *fakeLLM) ChatJSON(_ context.Context, _ string, _ []ollama.Message, _ js
 
 type fakeTools struct{}
 
-func (fakeTools) Tools(context.Context) ([]ollama.Tool, error) { return nil, nil }
+func (fakeTools) Tools(context.Context) ([]deepseek.Tool, error) { return nil, nil }
 func (fakeTools) Call(context.Context, string, map[string]any) (string, error) {
 	return "", nil
 }

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vlastroG/yocode/internal/ollama"
+	"github.com/vlastroG/yocode/internal/deepseek"
 	"github.com/vlastroG/yocode/internal/rag"
 )
 
@@ -38,10 +38,10 @@ type reply struct {
 
 type fakeLLM struct {
 	replies []reply
-	calls   [][]ollama.Message
+	calls   [][]deepseek.Message
 }
 
-func (f *fakeLLM) ChatJSON(_ context.Context, _ string, msgs []ollama.Message, schema json.RawMessage, out any) error {
+func (f *fakeLLM) ChatJSON(_ context.Context, _ string, msgs []deepseek.Message, schema json.RawMessage, out any) error {
 	if !json.Valid(schema) {
 		return errors.New("invalid schema")
 	}

@@ -9,10 +9,10 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/vlastroG/yocode/internal/deepseek"
 	"github.com/vlastroG/yocode/internal/gittools"
 	"github.com/vlastroG/yocode/internal/mcpclient"
 	"github.com/vlastroG/yocode/internal/mcpserver"
-	"github.com/vlastroG/yocode/internal/ollama"
 	"github.com/vlastroG/yocode/internal/testutil"
 )
 
@@ -104,7 +104,7 @@ func TestDiffNonASCIIUntracked(t *testing.T) {
 // failingRead lists one untracked file whose read fails.
 type failingRead struct{}
 
-func (failingRead) Tools(context.Context) ([]ollama.Tool, error) { return nil, nil }
+func (failingRead) Tools(context.Context) ([]deepseek.Tool, error) { return nil, nil }
 func (failingRead) Call(_ context.Context, name string, _ map[string]any) (string, error) {
 	switch name {
 	case "git_status":
