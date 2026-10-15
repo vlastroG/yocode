@@ -13,6 +13,7 @@ const stepRules = `- Use the tools yourself. Never ask the user to do anything.
 - Paths are relative to the project root. Never repeat a tool call that already returned a result.
 - Tool calls are limited: read only what the step needs, then make the change.
 - Read a file before editing it. Prefer edit_file over rewriting a whole file; create new files with write_file.
+- A file the plan names that doesn't exist yet is to be created: never change a similarly named file instead.
 - Text you write from tool output keeps its exact wording: quote commit messages, identifiers, paths and line numbers.
 - Never pull or push: the user does that.
 - Finish with a short summary of what you changed (file paths) or what you found.`
