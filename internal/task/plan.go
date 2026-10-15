@@ -32,6 +32,17 @@ func (a Access) rank() int {
 	return 0
 }
 
+// note tells an agent what its access allows, so a read step doesn't try to write.
+func (a Access) note() string {
+	switch a {
+	case AccessEdit:
+		return "Your access is edit: you can read, create, edit and delete files, but not branch or commit."
+	case AccessGit:
+		return "Your access is git: you can read and change files, create branches and commit."
+	}
+	return "Your access is read: you can read files and git history, but not change anything."
+}
+
 type Step struct {
 	Title        string `json:"title"`
 	Instructions string `json:"instructions"`

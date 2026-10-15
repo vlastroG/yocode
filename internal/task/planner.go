@@ -13,11 +13,18 @@ import (
 
 const exploreSystemPrompt = `You prepare the plan for a task in a software repository. Do not plan yet: explore.
 - Use grep, list_files and read_file to find the files, identifiers and documentation the goal is about.
-- You cannot modify anything.
+- For goals about the history or recent changes, use git_log and git_diff.
+- Paths are relative to the project root. You cannot modify anything.
+- You have only a few tool calls: never repeat one, and stop as soon as you know the files involved.
 - Reply with short notes: the relevant file paths and the facts about them that matter for the goal.`
 
+const exploreWrapup = "Stop exploring. Reply now with your notes."
+
 const planSystemPrompt = `You write the step-by-step plan for a task in a software repository. Another agent carries out each step.
-- Steps are concrete and name the files they read or change.
+- Steps are concrete and name the files they read or change. Use the exact file paths the goal names;
+  a file that doesn't exist yet is created in an "edit" step.
+- A step that changes files reads what it needs itself, so don't plan separate steps that only read.
+- Change only the files the goal asks for.
 - Each step must be doable on its own by an agent that has only the step's access:
   "read" reads files and git history, "edit" also writes, edits and deletes files, "git" also creates branches and commits.
 - Use "git" only when the goal asks to create a branch or commit.
@@ -55,7 +62,8 @@ func (p *Planner) Draft(ctx context.Context, goal string) (Plan, string, error) 
 	if err != nil {
 		return Plan{}, "", fmt.Errorf("search docs: %w", err)
 	}
-	loop := agent.Loop{LLM: p.LLM, Model: p.Model, Tools: p.Tools, MaxSteps: exploreSteps, OnToolCall: p.OnToolCall}
+	loop := agent.Loop{LLM: p.LLM, Model: p.Model, Tools: p.Tools, MaxSteps: exploreSteps, OnToolCall: p.OnToolCall,
+		Wrapup: exploreWrapup}
 	notes, err := loop.Run(ctx, []ollama.Message{
 		{Role: "system", Content: exploreSystemPrompt},
 		{Role: "user", Content: docsText(hits) + "Goal: " + goal},

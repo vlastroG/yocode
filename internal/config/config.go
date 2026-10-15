@@ -79,8 +79,11 @@ func parseBool(s string) bool {
 	return false
 }
 
+// indexLayout changes when chunk sources change, so older indexes are rebuilt instead of reused.
+const indexLayout = "2"
+
 func indexKey(project, docs, model string) string {
-	h := sha256.Sum256([]byte(normPath(project) + "|" + normPath(docs) + "|" + model))
+	h := sha256.Sum256([]byte(indexLayout + "|" + normPath(project) + "|" + normPath(docs) + "|" + model))
 	return "docs-" + hex.EncodeToString(h[:8])
 }
 

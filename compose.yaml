@@ -1,6 +1,6 @@
 services:
   ollama:
-    image: ollama/ollama:0.12.6
+    image: ollama/ollama:0.34.4
     # Runs on the CPU by default; add compose.gpu.yaml for an NVIDIA GPU (see .env.example).
     volumes:
       - ollama-models:/root/.ollama

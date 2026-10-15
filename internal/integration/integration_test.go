@@ -22,12 +22,15 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/vlastroG/yocode/internal/agent"
 	"github.com/vlastroG/yocode/internal/app"
 	"github.com/vlastroG/yocode/internal/commands"
 	"github.com/vlastroG/yocode/internal/config"
 	"github.com/vlastroG/yocode/internal/gittools"
 	"github.com/vlastroG/yocode/internal/mcpclient"
 	"github.com/vlastroG/yocode/internal/mcpserver"
+	"github.com/vlastroG/yocode/internal/ollama"
+	"github.com/vlastroG/yocode/internal/task"
 )
 
 const (
@@ -78,28 +81,25 @@ func (r *recorder) onToolCall(name string, args map[string]any) {
 	r.t.Logf("tool: %s %s", name, key)
 }
 
-// middleware logs the tool calls that fail on the server.
-func (r *recorder) middleware(next mcp.MethodHandler) mcp.MethodHandler {
-	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
-		res, err := next(ctx, method, req)
-		call, ok := req.(*mcp.CallToolRequest)
-		if !ok {
-			return res, err
-		}
-		if out, isResult := res.(*mcp.CallToolResult); err != nil || (isResult && out.IsError) {
-			msg := fmt.Sprint(err)
-			if err == nil && len(out.Content) > 0 {
-				if tc, ok := out.Content[0].(*mcp.TextContent); ok {
-					msg = tc.Text
-				}
-			}
-			r.mu.Lock()
-			r.failed++
-			r.mu.Unlock()
-			r.t.Logf("tool failed: %s: %s", call.Params.Name, cut(msg, 300))
-		}
-		return res, err
+// wrap logs the calls of tools that fail, including tools outside the caller's access.
+func (r *recorder) wrap(tools agent.Tools) agent.Tools { return failLog{tools, r} }
+
+type failLog struct {
+	inner agent.Tools
+	r     *recorder
+}
+
+func (f failLog) Tools(ctx context.Context) ([]ollama.Tool, error) { return f.inner.Tools(ctx) }
+
+func (f failLog) Call(ctx context.Context, name string, args map[string]any) (string, error) {
+	out, err := f.inner.Call(ctx, name, args)
+	if err != nil {
+		f.r.mu.Lock()
+		f.r.failed++
+		f.r.mu.Unlock()
+		f.r.t.Logf("tool failed: %s: %s", name, cut(err.Error(), 300))
 	}
+	return out, err
 }
 
 // newApp wires yocode for repo, with its tools served in memory.
@@ -114,10 +114,8 @@ func newApp(t *testing.T, repo, data string) (*app.App, *recorder) {
 	})
 	rec := &recorder{t: t, seen: map[string]bool{}}
 	a, err := app.Setup(context.Background(), cfg, func(ctx context.Context) (*mcpclient.Client, error) {
-		s := mcpserver.New(gittools.Repo{Dir: repo})
-		s.AddReceivingMiddleware(rec.middleware)
 		st, ct := mcp.NewInMemoryTransports()
-		if _, err := s.Connect(ctx, st, nil); err != nil {
+		if _, err := mcpserver.New(gittools.Repo{Dir: repo}).Connect(ctx, st, nil); err != nil {
 			return nil, err
 		}
 		return mcpclient.Connect(ctx, ct)
@@ -126,6 +124,10 @@ func newApp(t *testing.T, repo, data string) (*app.App, *recorder) {
 		t.Fatalf("setup: %v", err)
 	}
 	t.Cleanup(a.Close)
+	a.Agent.Tools = rec.wrap(a.Agent.Tools)
+	a.Task.Planner.Tools = rec.wrap(a.Task.Planner.Tools)
+	toolsFor := a.Task.Executor.ToolsFor
+	a.Task.Executor.ToolsFor = func(acc task.Access) agent.Tools { return rec.wrap(toolsFor(acc)) }
 	a.Agent.OnToolCall = rec.onToolCall
 	a.Task.Planner.OnToolCall = rec.onToolCall
 	a.Task.Executor.OnToolCall = rec.onToolCall

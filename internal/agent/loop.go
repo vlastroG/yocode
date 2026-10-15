@@ -16,6 +16,9 @@ type Loop struct {
 	Tools      Tools
 	MaxSteps   int // model calls; 0 means 6
 	OnToolCall func(name string, args map[string]any)
+	// Wrapup, if set, is sent when the steps run out, and the model answers once without tools
+	// instead of the run failing.
+	Wrapup string
 }
 
 // Run lists the tools, then calls the model and runs its tool calls until it answers without one.
@@ -47,6 +50,13 @@ func (l Loop) Run(ctx context.Context, msgs []ollama.Message) (string, error) {
 			}
 			msgs = append(msgs, ollama.Message{Role: "tool", Content: out, ToolName: tc.Function.Name})
 		}
+	}
+	if l.Wrapup != "" {
+		resp, err := l.LLM.Chat(ctx, l.Model, append(msgs, ollama.Message{Role: "user", Content: l.Wrapup}), nil)
+		if err != nil {
+			return "", err
+		}
+		return resp.Content, nil
 	}
 	return "", fmt.Errorf("no answer after %d tool steps", steps)
 }

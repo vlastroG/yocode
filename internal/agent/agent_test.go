@@ -14,9 +14,11 @@ import (
 type fakeLLM struct {
 	replies []ollama.Message
 	calls   [][]ollama.Message
+	tools   []int // tool definitions sent with each call
 }
 
-func (f *fakeLLM) Chat(_ context.Context, _ string, msgs []ollama.Message, _ []ollama.Tool) (ollama.Message, error) {
+func (f *fakeLLM) Chat(_ context.Context, _ string, msgs []ollama.Message, tools []ollama.Tool) (ollama.Message, error) {
+	f.tools = append(f.tools, len(tools))
 	f.calls = append(f.calls, append([]ollama.Message(nil), msgs...))
 	if len(f.replies) == 0 {
 		return ollama.Message{}, errors.New("no more replies")

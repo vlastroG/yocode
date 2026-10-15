@@ -9,8 +9,9 @@ import (
 	"github.com/vlastroG/yocode/internal/ollama"
 )
 
-const stepRules = `- Use the tools to read and change files yourself. Never ask the user to do anything.
-- Read a file before editing it. Prefer edit_file over rewriting a whole file with write_file.
+const stepRules = `- Use the tools yourself. Never ask the user to do anything.
+- Paths are relative to the project root. Never repeat a tool call that already returned a result.
+- Read a file before editing it. Prefer edit_file over rewriting a whole file; create new files with write_file.
 - Never pull or push: the user does that.
 - Finish with a short summary of what you changed (file paths) or what you found.`
 
@@ -87,7 +88,7 @@ func (e *Executor) runStep(ctx context.Context, p Plan, i int, done []StepResult
 		}
 		b.WriteString("\n")
 	}
-	fmt.Fprintf(&b, "Your step: %d. %s\n%s", i+1, s.Title, s.Instructions)
+	fmt.Fprintf(&b, "Your step: %d. %s\n%s\n\n%s", i+1, s.Title, s.Instructions, s.Access.note())
 	return e.loop(ctx, s, stepSystemPrompt, b.String(), stepMaxSteps)
 }
 
@@ -99,6 +100,7 @@ func (e *Executor) runAll(ctx context.Context, p Plan) StepResult {
 	for i, st := range p.Steps {
 		fmt.Fprintf(&b, "%d. %s (%s): %s\n", i+1, st.Title, st.Access, st.Instructions)
 	}
+	b.WriteString("\n" + s.Access.note())
 	return e.loop(ctx, s, singleSystemPrompt, b.String(), stepMaxSteps*len(p.Steps))
 }
 
