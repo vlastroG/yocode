@@ -8,21 +8,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/philippgille/chromem-go"
-	"github.com/vlastroG/yocode/internal/agent"
+	"github.com/vlastroG/yocode/internal/app"
 	"github.com/vlastroG/yocode/internal/commands"
 	"github.com/vlastroG/yocode/internal/config"
-	"github.com/vlastroG/yocode/internal/docs"
 	"github.com/vlastroG/yocode/internal/mcpclient"
-	"github.com/vlastroG/yocode/internal/mcpserver"
-	"github.com/vlastroG/yocode/internal/ollama"
-	"github.com/vlastroG/yocode/internal/rag"
 	"github.com/vlastroG/yocode/internal/review"
-	"github.com/vlastroG/yocode/internal/task"
 	"github.com/vlastroG/yocode/internal/tui"
 )
 
@@ -88,25 +80,30 @@ func main() {
 
 func run(name string, args []string) error {
 	ctx := context.Background()
-	app, err := setup(ctx, config.FromEnv(os.Getenv))
+	cfg := config.FromEnv(os.Getenv)
+	a, err := app.Setup(ctx, cfg, func(ctx context.Context) (*mcpclient.Client, error) {
+		c, err := mcpclient.Start(ctx, cfg.MCPCommand, cfg.ProjectDir)
+		if err != nil {
+			return nil, fmt.Errorf("start MCP server %s: %w", cfg.MCPCommand, err)
+		}
+		return c, nil
+	})
 	if err != nil {
 		return err
 	}
-	defer app.close()
+	defer a.Close()
 
-	d := commands.Deps{Agent: app.agent, Review: app.review, Task: app.task, Tools: app.readOnly}
 	if name == "" || name == "chat" {
-		return tui.Run(d, app.info)
+		return tui.Run(a.Deps(nil), a.Info)
 	}
-	onTool := func(tool string, a map[string]any) { fmt.Fprintln(os.Stderr, "tool:", tool, a) }
+	onTool := func(tool string, args map[string]any) { fmt.Fprintln(os.Stderr, "tool:", tool, args) }
 	onProgress := func(s string) { fmt.Fprintln(os.Stderr, s) }
-	app.agent.OnToolCall = onTool
-	app.review.OnProgress = onProgress
-	app.task.Planner.OnToolCall = onTool
-	app.task.Executor.OnToolCall = onTool
-	app.task.Executor.OnProgress = onProgress
-	d.Prompt = stdinPrompt(bufio.NewReader(os.Stdin))
-	c, _ := commands.New(d).CLI().Lookup(name)
+	a.Agent.OnToolCall = onTool
+	a.Review.OnProgress = onProgress
+	a.Task.Planner.OnToolCall = onTool
+	a.Task.Executor.OnToolCall = onTool
+	a.Task.Executor.OnProgress = onProgress
+	c, _ := commands.New(a.Deps(stdinPrompt(bufio.NewReader(os.Stdin)))).CLI().Lookup(name)
 	out, err := c.Run(ctx, args[1:])
 	if err != nil {
 		return err
@@ -125,74 +122,4 @@ func stdinPrompt(in *bufio.Reader) func(string) (string, error) {
 		}
 		return strings.TrimSpace(line), nil
 	}
-}
-
-type app struct {
-	agent    *agent.Agent
-	review   *review.Pipeline
-	task     *task.Session
-	readOnly agent.Tools
-	info     string
-	close    func()
-}
-
-// setup pulls missing models, builds or reuses the docs index and starts the MCP server.
-func setup(ctx context.Context, cfg config.Config) (*app, error) {
-	llm := &ollama.Client{BaseURL: cfg.OllamaURL, NumCtx: cfg.NumCtx, Seed: cfg.Seed, Think: cfg.Think}
-	if err := llm.EnsureModels(ctx, os.Stderr, cfg.ChatModel, cfg.EmbedModel); err != nil {
-		return nil, fmt.Errorf("ollama at %s: %w", cfg.OllamaURL, err)
-	}
-
-	store, err := rag.Open(filepath.Join(cfg.DataDir, "vectors"),
-		chromem.NewEmbeddingFuncOllama(cfg.EmbedModel, cfg.OllamaURL+"/api"))
-	if err != nil {
-		return nil, err
-	}
-	fmt.Fprintln(os.Stderr, "preparing docs index...")
-	idx, built, err := store.Ensure(ctx, cfg.IndexKey, cfg.Reindex, func() ([]docs.Chunk, error) {
-		return docs.LoadChunks(cfg.ProjectDir, cfg.DocsDir)
-	})
-	if err != nil {
-		return nil, err
-	}
-	state := "reused"
-	if built {
-		state = "built"
-	}
-	info := fmt.Sprintf("docs index %s: %s (%d chunks) · model %s · project %s",
-		cfg.IndexKey, state, idx.Count(), cfg.ChatModel, cfg.ProjectDir)
-	fmt.Fprintln(os.Stderr, info)
-
-	tools, err := mcpclient.Start(ctx, cfg.MCPCommand, cfg.ProjectDir)
-	if err != nil {
-		return nil, fmt.Errorf("start MCP server %s: %w", cfg.MCPCommand, err)
-	}
-	readOnly := tools.Only(mcpserver.ReadTools...)
-	edit := append(append([]string(nil), mcpserver.ReadTools...), mcpserver.EditTools...)
-	gitWrite := append(append([]string(nil), edit...), mcpserver.GitWriteTools...)
-	views := map[task.Access]agent.Tools{
-		task.AccessRead: readOnly,
-		task.AccessEdit: tools.Only(edit...),
-		task.AccessGit:  tools.Only(gitWrite...),
-	}
-	return &app{
-		agent: &agent.Agent{LLM: llm, Model: cfg.ChatModel, Tools: readOnly, Docs: idx},
-		review: &review.Pipeline{LLM: llm, Model: cfg.ChatModel, Tools: readOnly, Docs: idx,
-			Language: cfg.ReviewLanguage, MaxFiles: cfg.ReviewMaxFiles},
-		readOnly: readOnly,
-		task: &task.Session{
-			Planner: &task.Planner{LLM: llm, Model: cfg.ChatModel, Tools: readOnly, Docs: idx},
-			Executor: &task.Executor{LLM: llm, Model: cfg.ChatModel, Single: cfg.TaskSingle,
-				ToolsFor: func(a task.Access) agent.Tools {
-					if v, ok := views[a]; ok {
-						return v
-					}
-					return readOnly // a hand-edited replay plan may name an unknown access
-				},
-				Status: tools.Only("git_status")},
-			Store: task.Store{Dir: filepath.Join(cfg.DataDir, "tasks"), Now: time.Now},
-		},
-		info:  info,
-		close: func() { tools.Close() },
-	}, nil
 }
