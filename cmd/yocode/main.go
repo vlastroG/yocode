@@ -1,121 +1,127 @@
-// Command yocode is a local, read-only assistant for a project's docs and git repository.
+// Command yocode is a code assistant for a project's docs and git repository: DeepSeek chat, local docs index.
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/philippgille/chromem-go"
-	"github.com/vlastroG/yocode/internal/agent"
+	"github.com/vlastroG/yocode/internal/app"
+	"github.com/vlastroG/yocode/internal/commands"
 	"github.com/vlastroG/yocode/internal/config"
-	"github.com/vlastroG/yocode/internal/docs"
 	"github.com/vlastroG/yocode/internal/mcpclient"
-	"github.com/vlastroG/yocode/internal/ollama"
-	"github.com/vlastroG/yocode/internal/rag"
+	"github.com/vlastroG/yocode/internal/review"
 	"github.com/vlastroG/yocode/internal/tui"
 )
 
-const usage = `yocode - local, read-only assistant for your project's docs and git repository.
-
-Usage:
-  yocode              start the interactive chat (default)
-  yocode ask "..."    ask one question and print the answer
-  yocode help         show this help
-
+const configHelp = `
 Configuration (environment; with docker compose set these in .env):
-  PROJECT_PATH   host path of the project (mounted read-only at /project)
-  DOCS_PATH      optional host path of a separate docs project (mounted at /docs)
-  CHAT_MODEL     Ollama chat model (default qwen2.5:7b)
-  EMBED_MODEL    Ollama embedding model (default bge-m3)
-  REINDEX        true to rebuild the docs index on start
+  PROJECT_PATH     host path of the project (mounted at /project)
+  DOCS_PATH        optional host path of a separate docs project (mounted at /docs)
+  DEEPSEEK_API_KEY DeepSeek API key (required for everything but help)
+  CHAT_MODEL       DeepSeek chat model (default deepseek-flash; or deepseek-v4-pro)
+  DEEPSEEK_URL     DeepSeek API base URL (default https://api.deepseek.com)
+  TYPESAFE_API_KEY optional: Jev reranks docs excerpts and routes chat replies to a pending plan
+  JEV_MODEL        Jev model (default jev-1.13.0)
+  TASK_MODE        single (default: one conversation, access of the widest step) or
+                   subagents (one agent per step, with that step's access)
+  GIT_USER_NAME    author and committer name of task commits (default yocode)
+  GIT_USER_EMAIL   author and committer email of task commits (default yocode@localhost)
+  EMBED_MODEL      local Ollama embedding model for the docs index (default bge-m3)
+  REVIEW_LANGUAGE  language of review reports (default English)
+  REVIEW_MAX_FILES files a review may cover; more stops with a warning (default 25)
+  REINDEX          true to rebuild the docs index on start
 `
+
+func usage(cmds commands.Set) string {
+	return "yocode - code assistant for your project's docs and git repository (DeepSeek chat, local docs index).\n\nUsage: yocode [command]\n" +
+		commands.UsageLine("(none)", "start the interactive chat; the commands below work there as /<name>") +
+		cmds.CLI().Usage("") +
+		commands.UsageLine("help", "show this help") +
+		configHelp
+}
 
 func main() {
 	args := os.Args[1:]
-	cmd := ""
+	name := ""
 	if len(args) > 0 {
-		cmd = args[0]
+		name = args[0]
 	}
-	switch cmd {
+	cmds := commands.New(commands.Deps{}).CLI() // names, help and argument checks only
+	switch name {
 	case "help", "-h", "--help":
-		fmt.Print(usage)
+		fmt.Print(usage(cmds))
 		return
-	case "", "chat", "ask":
+	case "", "chat":
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", cmd, usage)
-		os.Exit(2)
+		c, ok := cmds.Lookup(name)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", name, usage(cmds))
+			os.Exit(2)
+		}
+		// Check the arguments before the slow setup (models, docs index).
+		if err := c.Check(args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(2)
+		}
 	}
-	if err := run(cmd, args); err != nil {
+	if err := run(name, args); err != nil {
+		var tooMany *review.TooManyFilesError
+		if errors.As(err, &tooMany) {
+			fmt.Fprintln(os.Stderr, "warning:", err)
+			os.Exit(3)
+		}
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
 
-func run(cmd string, args []string) error {
+func run(name string, args []string) error {
 	ctx := context.Background()
 	cfg := config.FromEnv(os.Getenv)
-
-	var question string
-	if cmd == "ask" {
-		question = strings.TrimSpace(strings.Join(args[1:], " "))
-		if question == "" {
-			return errors.New(`usage: yocode ask "question"`)
+	a, err := app.Setup(ctx, cfg, func(ctx context.Context) (*mcpclient.Client, error) {
+		c, err := mcpclient.Start(ctx, cfg.MCPCommand, cfg.ProjectDir)
+		if err != nil {
+			return nil, fmt.Errorf("start MCP server %s: %w", cfg.MCPCommand, err)
 		}
-	}
-
-	a, info, closeTools, err := setup(ctx, cfg)
+		return c, nil
+	})
 	if err != nil {
 		return err
 	}
-	defer closeTools()
+	defer a.Close()
 
-	if cmd != "ask" {
-		return tui.Run(a, info)
+	if name == "" || name == "chat" {
+		return tui.Run(a.Deps(nil), a.Info)
 	}
-	a.OnToolCall = func(name string, args map[string]any) { fmt.Fprintln(os.Stderr, "tool:", name, args) }
-	answer, err := a.Ask(ctx, question)
+	onTool := func(tool string, args map[string]any) { fmt.Fprintln(os.Stderr, "tool:", tool, args) }
+	onProgress := func(s string) { fmt.Fprintln(os.Stderr, s) }
+	a.Agent.OnToolCall = onTool
+	a.Review.OnProgress = onProgress
+	a.Task.Planner.OnToolCall = onTool
+	a.Task.Executor.OnToolCall = onTool
+	a.Task.Executor.OnProgress = onProgress
+	c, _ := commands.New(a.Deps(stdinPrompt(bufio.NewReader(os.Stdin)))).CLI().Lookup(name)
+	out, err := c.Run(ctx, args[1:])
 	if err != nil {
 		return err
 	}
-	fmt.Println(answer)
+	fmt.Println(out)
 	return nil
 }
 
-// setup pulls missing models, builds or reuses the docs index and starts the MCP server.
-func setup(ctx context.Context, cfg config.Config) (*agent.Agent, string, func(), error) {
-	llm := &ollama.Client{BaseURL: cfg.OllamaURL, NumCtx: cfg.NumCtx}
-	if err := llm.EnsureModels(ctx, os.Stderr, cfg.ChatModel, cfg.EmbedModel); err != nil {
-		return nil, "", nil, fmt.Errorf("ollama at %s: %w", cfg.OllamaURL, err)
+// stdinPrompt prints text to stderr and reads one line; empty stdin gives io.EOF.
+func stdinPrompt(in *bufio.Reader) func(string) (string, error) {
+	return func(text string) (string, error) {
+		fmt.Fprint(os.Stderr, text)
+		line, err := in.ReadString('\n')
+		if err != nil && (err != io.EOF || line == "") {
+			return "", err
+		}
+		return strings.TrimSpace(line), nil
 	}
-
-	store, err := rag.Open(filepath.Join(cfg.DataDir, "vectors"),
-		chromem.NewEmbeddingFuncOllama(cfg.EmbedModel, cfg.OllamaURL+"/api"))
-	if err != nil {
-		return nil, "", nil, err
-	}
-	fmt.Fprintln(os.Stderr, "preparing docs index...")
-	idx, built, err := store.Ensure(ctx, cfg.IndexKey, cfg.Reindex, func() ([]docs.Chunk, error) {
-		return docs.LoadChunks(cfg.ProjectDir, cfg.DocsDir)
-	})
-	if err != nil {
-		return nil, "", nil, err
-	}
-	state := "reused"
-	if built {
-		state = "built"
-	}
-	info := fmt.Sprintf("docs index %s: %s (%d chunks) · model %s · project %s",
-		cfg.IndexKey, state, idx.Count(), cfg.ChatModel, cfg.ProjectDir)
-	fmt.Fprintln(os.Stderr, info)
-
-	tools, err := mcpclient.Start(ctx, cfg.MCPCommand, cfg.ProjectDir)
-	if err != nil {
-		return nil, "", nil, fmt.Errorf("start MCP server %s: %w", cfg.MCPCommand, err)
-	}
-	a := &agent.Agent{LLM: llm, Model: cfg.ChatModel, Tools: tools, Docs: idx}
-	return a, info, func() { tools.Close() }, nil
 }

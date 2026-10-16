@@ -12,12 +12,22 @@ type Config struct {
 	OllamaURL  string
 	ChatModel  string
 	EmbedModel string
-	NumCtx     int
+	APIKey     string // DEEPSEEK_API_KEY
+	APIURL     string // DeepSeek API base URL
+
+	// TypeSafe Jev judges docs relevance and routes chat replies to a pending plan; off without a key.
+	JevKey   string
+	JevModel string
+
+	TaskSingle bool // one conversation for all task steps; TASK_MODE=subagents turns it off
 
 	ProjectDir string // project mount inside the container
 	DocsDir    string // optional separate docs mount inside the container
 	DataDir    string // persistent volume for the vector DB
 	MCPCommand string // path of the yocode-mcp binary
+
+	ReviewLanguage string // language of review reports
+	ReviewMaxFiles int    // files a review may cover before it stops with a warning
 
 	// IndexKey identifies the docs index for this (project, docs, embedding model) combination,
 	// so a project seen before reuses its embeddings.
@@ -33,18 +43,24 @@ func FromEnv(getenv func(string) string) Config {
 		return def
 	}
 	c := Config{
-		OllamaURL:  strings.TrimRight(get("OLLAMA_URL", "http://localhost:11434"), "/"),
-		ChatModel:  get("CHAT_MODEL", "qwen2.5:7b"),
-		EmbedModel: get("EMBED_MODEL", "bge-m3"),
-		NumCtx:     8192,
-		ProjectDir: get("PROJECT_DIR", "/project"),
-		DocsDir:    get("DOCS_DIR", "/docs"),
-		DataDir:    get("DATA_DIR", "/data"),
-		MCPCommand: get("YOCODE_MCP", "yocode-mcp"),
-		Reindex:    parseBool(getenv("REINDEX")),
+		OllamaURL:      strings.TrimRight(get("OLLAMA_URL", "http://localhost:11434"), "/"),
+		ChatModel:      get("CHAT_MODEL", "deepseek-flash"),
+		EmbedModel:     get("EMBED_MODEL", "bge-m3"),
+		APIKey:         strings.TrimSpace(getenv("DEEPSEEK_API_KEY")),
+		APIURL:         strings.TrimRight(get("DEEPSEEK_URL", "https://api.deepseek.com"), "/"),
+		JevKey:         strings.TrimSpace(getenv("TYPESAFE_API_KEY")),
+		JevModel:       get("JEV_MODEL", "jev-1.13.0"),
+		TaskSingle:     getenv("TASK_MODE") != "subagents",
+		ProjectDir:     get("PROJECT_DIR", "/project"),
+		DocsDir:        get("DOCS_DIR", "/docs"),
+		DataDir:        get("DATA_DIR", "/data"),
+		MCPCommand:     get("YOCODE_MCP", "yocode-mcp"),
+		Reindex:        parseBool(getenv("REINDEX")),
+		ReviewLanguage: get("REVIEW_LANGUAGE", "English"),
+		ReviewMaxFiles: 25,
 	}
-	if n, err := strconv.Atoi(getenv("NUM_CTX")); err == nil && n > 0 {
-		c.NumCtx = n
+	if n, err := strconv.Atoi(getenv("REVIEW_MAX_FILES")); err == nil && n > 0 {
+		c.ReviewMaxFiles = n
 	}
 	c.IndexKey = indexKey(get("PROJECT_HOST_PATH", c.ProjectDir), getenv("DOCS_HOST_PATH"), c.EmbedModel)
 	return c
@@ -58,8 +74,11 @@ func parseBool(s string) bool {
 	return false
 }
 
+// indexLayout changes when chunk sources change, so older indexes are rebuilt instead of reused.
+const indexLayout = "2"
+
 func indexKey(project, docs, model string) string {
-	h := sha256.Sum256([]byte(normPath(project) + "|" + normPath(docs) + "|" + model))
+	h := sha256.Sum256([]byte(indexLayout + "|" + normPath(project) + "|" + normPath(docs) + "|" + model))
 	return "docs-" + hex.EncodeToString(h[:8])
 }
 

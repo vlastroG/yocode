@@ -14,32 +14,44 @@ func TestDefaults(t *testing.T) {
 	if c.OllamaURL != "http://localhost:11434" {
 		t.Errorf("OllamaURL = %q", c.OllamaURL)
 	}
-	if c.ChatModel != "qwen2.5:7b" || c.EmbedModel != "bge-m3" {
+	if c.ChatModel != "deepseek-flash" || c.EmbedModel != "bge-m3" {
 		t.Errorf("models = %q, %q", c.ChatModel, c.EmbedModel)
 	}
 	if c.ProjectDir != "/project" || c.DocsDir != "/docs" || c.DataDir != "/data" {
 		t.Errorf("dirs = %q %q %q", c.ProjectDir, c.DocsDir, c.DataDir)
 	}
-	if c.MCPCommand != "yocode-mcp" || c.NumCtx != 8192 || c.Reindex {
-		t.Errorf("mcp=%q numctx=%d reindex=%v", c.MCPCommand, c.NumCtx, c.Reindex)
+	if c.MCPCommand != "yocode-mcp" || c.Reindex {
+		t.Errorf("mcp=%q reindex=%v", c.MCPCommand, c.Reindex)
 	}
 	if !strings.HasPrefix(c.IndexKey, "docs-") {
 		t.Errorf("IndexKey = %q", c.IndexKey)
+	}
+	if c.APIURL != "https://api.deepseek.com" || c.APIKey != "" || !c.TaskSingle {
+		t.Errorf("api=%q key=%q single=%v", c.APIURL, c.APIKey, c.TaskSingle)
+	}
+	if c.ReviewLanguage != "English" || c.ReviewMaxFiles != 25 {
+		t.Errorf("review settings = %q, %d", c.ReviewLanguage, c.ReviewMaxFiles)
 	}
 }
 
 func TestOverrides(t *testing.T) {
 	c := FromEnv(env(map[string]string{
-		"OLLAMA_URL": "http://ollama:11434/",
-		"CHAT_MODEL": "llama3.1:8b",
-		"REINDEX":    "TRUE",
-		"NUM_CTX":    "4096",
+		"OLLAMA_URL":       "http://ollama:11434/",
+		"CHAT_MODEL":       "deepseek-v4-pro",
+		"REINDEX":          "TRUE",
+		"DEEPSEEK_API_KEY": " sk-1 ",
+		"DEEPSEEK_URL":     "https://proxy.example/",
+		"REVIEW_LANGUAGE":  "Russian",
+		"REVIEW_MAX_FILES": "80",
 	}))
 	if c.OllamaURL != "http://ollama:11434" {
 		t.Errorf("OllamaURL = %q, want trailing slash trimmed", c.OllamaURL)
 	}
-	if c.ChatModel != "llama3.1:8b" || !c.Reindex || c.NumCtx != 4096 {
+	if c.ChatModel != "deepseek-v4-pro" || !c.Reindex || c.APIKey != "sk-1" || c.APIURL != "https://proxy.example" {
 		t.Errorf("got %+v", c)
+	}
+	if c.ReviewLanguage != "Russian" || c.ReviewMaxFiles != 80 {
+		t.Errorf("review settings = %q, %d", c.ReviewLanguage, c.ReviewMaxFiles)
 	}
 }
 
@@ -57,5 +69,24 @@ func TestIndexKeyDependsOnDocsAndModel(t *testing.T) {
 	otherModel := FromEnv(env(map[string]string{"PROJECT_HOST_PATH": "c:/foo", "EMBED_MODEL": "mxbai-embed-large"}))
 	if base.IndexKey == withDocs.IndexKey || base.IndexKey == otherModel.IndexKey {
 		t.Errorf("keys should differ: %q %q %q", base.IndexKey, withDocs.IndexKey, otherModel.IndexKey)
+	}
+}
+
+func TestTaskMode(t *testing.T) {
+	if c := FromEnv(env(map[string]string{"TASK_MODE": "other"})); !c.TaskSingle {
+		t.Error("unknown TASK_MODE should run in single mode")
+	}
+	if c := FromEnv(env(map[string]string{"TASK_MODE": "subagents"})); c.TaskSingle {
+		t.Error("TASK_MODE=subagents runs in single mode")
+	}
+}
+
+func TestJevSettings(t *testing.T) {
+	if c := FromEnv(env(nil)); c.JevKey != "" || c.JevModel != "jev-1.13.0" {
+		t.Errorf("defaults: key %q model %q", c.JevKey, c.JevModel)
+	}
+	c := FromEnv(env(map[string]string{"TYPESAFE_API_KEY": " ts-1 ", "JEV_MODEL": "jev-1.14.0"}))
+	if c.JevKey != "ts-1" || c.JevModel != "jev-1.14.0" {
+		t.Errorf("overrides: key %q model %q", c.JevKey, c.JevModel)
 	}
 }

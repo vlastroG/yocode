@@ -2,6 +2,7 @@ package rag
 
 import (
 	"context"
+	"fmt"
 	"hash/fnv"
 	"math"
 	"strings"
@@ -70,6 +71,35 @@ func TestEnsureBuildsOnceAndSearches(t *testing.T) {
 	if err != nil || !built {
 		t.Fatalf("reindex: built=%v err=%v", built, err)
 	}
+}
+
+func TestHybridSearchFindsExactIdentifier(t *testing.T) {
+	ctx := context.Background()
+	flat := func(context.Context, string) ([]float32, error) { return []float32{1, 0}, nil }
+	var cs []docs.Chunk
+	for i := range 12 {
+		cs = append(cs, docs.Chunk{Source: fmt.Sprintf("f%d.md", i), Text: "generic filler text"})
+	}
+	cs = append(cs, docs.Chunk{Source: "client.md", Text: "configure FooBarClient retries"})
+
+	s, err := Open(t.TempDir(), flat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ix, _, err := s.Ensure(ctx, "k", false, func() ([]docs.Chunk, error) { return cs, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	hits, err := ix.Search(ctx, "FooBarClient", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range hits {
+		if h.Source == "client.md" {
+			return
+		}
+	}
+	t.Errorf("client.md not in hits: %+v", hits)
 }
 
 func TestSearchEmptyIndex(t *testing.T) {

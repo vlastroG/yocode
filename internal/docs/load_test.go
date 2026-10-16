@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestLoadChunksPrefixesRootName(t *testing.T) {
+func TestLoadChunksPrefixesExtraRootName(t *testing.T) {
 	base := t.TempDir()
 	project := filepath.Join(base, "project")
 	docsDir := filepath.Join(base, "docs")
@@ -21,7 +21,7 @@ func TestLoadChunksPrefixesRootName(t *testing.T) {
 	for _, c := range chunks {
 		sources[c.Source] = true
 	}
-	if !sources["project/README.md"] || !sources["docs/content/intro.md"] || len(sources) != 2 {
+	if !sources["README.md"] || !sources["docs/content/intro.md"] || len(sources) != 2 {
 		t.Errorf("sources = %v", sources)
 	}
 }

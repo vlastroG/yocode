@@ -8,11 +8,16 @@ import (
 // chunkSize keeps chunks small (~400 tokens) so each embedding stays focused on one topic.
 const chunkSize = 1500
 
-// LoadChunks discovers doc files under each root and splits them into chunks.
-// Sources are prefixed with the root's base name, e.g. "project/README.md" or "docs/content/intro.md".
-func LoadChunks(roots ...string) ([]Chunk, error) {
+// LoadChunks discovers doc files under the project and the extra roots and splits them into chunks.
+// Project sources are project-relative paths the file tools accept, e.g. "docs/install.md";
+// extra roots are prefixed with their base name, e.g. "docs/content/intro.md" for /docs.
+func LoadChunks(project string, extra ...string) ([]Chunk, error) {
 	var all []Chunk
-	for _, root := range roots {
+	for i, root := range append([]string{project}, extra...) {
+		prefix := filepath.Base(root) + "/"
+		if i == 0 {
+			prefix = ""
+		}
 		files, err := Discover(root)
 		if err != nil {
 			return nil, err
@@ -23,7 +28,7 @@ func LoadChunks(roots ...string) ([]Chunk, error) {
 				return nil, err
 			}
 			title, body := splitFrontMatter(string(b))
-			chunks := Split(filepath.Base(root)+"/"+f.Rel, body, chunkSize)
+			chunks := Split(prefix+f.Rel, body, chunkSize)
 			for i := range chunks {
 				chunks[i].Title = title
 			}

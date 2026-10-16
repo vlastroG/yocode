@@ -1,7 +1,8 @@
 services:
   ollama:
-    image: ollama/ollama:0.12.6
-    # Runs on the CPU by default; add compose.gpu.yaml for an NVIDIA GPU (see .env.example).
+    image: ollama/ollama:0.34.4
+    # Local embeddings for the docs index only (the chat model is DeepSeek in the cloud).
+    # Runs on the CPU by default; compose.gpu.yaml adds an NVIDIA GPU (see .env.example).
     volumes:
       - ollama-models:/root/.ollama
     healthcheck:
@@ -22,13 +23,43 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       PROJECT_HOST_PATH: ${PROJECT_PATH:?set PROJECT_PATH in .env}
       DOCS_HOST_PATH: ${DOCS_PATH:-}
-      CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:7b}
+      CHAT_MODEL: ${CHAT_MODEL:-deepseek-flash}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_URL: ${DEEPSEEK_URL:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      JEV_MODEL: ${JEV_MODEL:-}
+      TASK_MODE: ${TASK_MODE:-single}
+      GIT_AUTHOR_NAME: ${GIT_USER_NAME:-yocode}
+      GIT_COMMITTER_NAME: ${GIT_USER_NAME:-yocode}
+      GIT_AUTHOR_EMAIL: ${GIT_USER_EMAIL:-yocode@localhost}
+      GIT_COMMITTER_EMAIL: ${GIT_USER_EMAIL:-yocode@localhost}
       EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
       REINDEX: ${REINDEX:-false}
+      REVIEW_LANGUAGE: ${REVIEW_LANGUAGE:-English}
+      REVIEW_MAX_FILES: ${REVIEW_MAX_FILES:-25}
     volumes:
-      - ${PROJECT_PATH:?set PROJECT_PATH in .env}:/project:ro
+      - ${PROJECT_PATH:?set PROJECT_PATH in .env}:/project
       - ${DOCS_PATH:-./.nodocs}:/docs:ro
       - yocode-data:/data
+
+  # Integration tests on a fixture repo (DeepSeek + local embeddings): docker compose run --rm itest
+  itest:
+    build:
+      context: .
+      target: itest
+    profiles: [test]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      CHAT_MODEL: ${CHAT_MODEL:-deepseek-flash}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_URL: ${DEEPSEEK_URL:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      JEV_MODEL: ${JEV_MODEL:-}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      TASK_MODE: ${TASK_MODE:-single}
 
 volumes:
   ollama-models:

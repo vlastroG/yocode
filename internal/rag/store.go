@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 
 	"github.com/philippgille/chromem-go"
 	"github.com/vlastroG/yocode/internal/docs"
@@ -17,6 +18,12 @@ type Store struct {
 
 type Index struct {
 	col *chromem.Collection
+
+	once  sync.Once // loads the keyword side from the collection on first search
+	kw    *keywordIndex
+	texts map[string]string
+	meta  map[string]map[string]string
+	err   error
 }
 
 type Hit struct {
@@ -73,18 +80,52 @@ func (s *Store) Ensure(ctx context.Context, key string, reindex bool, load func(
 
 func (ix *Index) Count() int { return ix.col.Count() }
 
+// load reads all chunks back from the collection; ids are sequential ("0".."n-1", see Ensure).
+func (ix *Index) load() {
+	n := ix.col.Count()
+	ids := make([]string, n)
+	texts := make([]string, n)
+	ix.texts = make(map[string]string, n)
+	ix.meta = make(map[string]map[string]string, n)
+	for i := range n {
+		id := strconv.Itoa(i)
+		d, err := ix.col.GetByID(context.Background(), id)
+		if err != nil {
+			ix.err = fmt.Errorf("load chunk %s: %w", id, err)
+			return
+		}
+		ids[i], texts[i] = id, d.Content
+		ix.texts[id], ix.meta[id] = d.Content, d.Metadata
+	}
+	ix.kw = newKeywordIndex(ids, texts)
+}
+
+// Search merges embedding and keyword results by reciprocal rank fusion; Hit.Score is the fused score.
 func (ix *Index) Search(ctx context.Context, query string, n int) ([]Hit, error) {
 	n = min(n, ix.col.Count()) // chromem rejects n > number of documents
 	if n == 0 {
 		return nil, nil
 	}
-	res, err := ix.col.Query(ctx, query, n, nil, nil)
+	ix.once.Do(ix.load)
+	if ix.err != nil {
+		return nil, ix.err
+	}
+	k := max(2*n, 10)
+	res, err := ix.col.Query(ctx, query, min(k, ix.col.Count()), nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	hits := make([]Hit, len(res))
+	semantic := make([]string, len(res))
 	for i, r := range res {
-		hits[i] = Hit{Source: r.Metadata["source"], Heading: r.Metadata["heading"], Text: r.Content, Score: r.Similarity}
+		semantic[i] = r.ID
+	}
+	keyword := ix.kw.search(query, k)
+
+	scores, _ := rrfScores(semantic, keyword)
+	ids := fuse(semantic, keyword)
+	hits := make([]Hit, 0, n)
+	for _, id := range ids[:min(n, len(ids))] {
+		hits = append(hits, Hit{Source: ix.meta[id]["source"], Heading: ix.meta[id]["heading"], Text: ix.texts[id], Score: float32(scores[id])})
 	}
 	return hits, nil
 }

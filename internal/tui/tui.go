@@ -1,9 +1,11 @@
-// Package tui is a minimal chat interface: scrollback, a spinner while thinking, one input line.
+// Package tui is a minimal chat interface: scrollback, a spinner while working, one input line.
+// Input is a question or a /command from the commands package.
 package tui
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -11,13 +13,25 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/vlastroG/yocode/internal/agent"
+	"github.com/vlastroG/yocode/internal/commands"
+	"github.com/vlastroG/yocode/internal/review"
 )
 
 const (
-	userColor = lipgloss.Color("12")
-	botColor  = lipgloss.Color("10")
-	errColor  = lipgloss.Color("9")
+	userColor  = lipgloss.Color("12")
+	replyColor = lipgloss.Color("10")
+	errColor   = lipgloss.Color("9")
+)
+
+// labelColors gives some command results their own bar color; others use replyColor.
+var labelColors = map[string]lipgloss.Color{
+	"review": lipgloss.Color("11"), "warning": lipgloss.Color("11"), "diff": lipgloss.Color("14"),
+	"plan": lipgloss.Color("13"), "task": lipgloss.Color("13"),
+}
+
+const (
+	defaultPlaceholder = "Ask a question, or type / for commands"
+	pendingPlaceholder = "Type a correction, /go to run, /cancel to drop"
 )
 
 var (
@@ -29,53 +43,86 @@ var (
 type entryKind int
 
 const (
-	introEntry entryKind = iota
+	introEntry entryKind = iota // dim text: startup info and /help
 	userEntry
-	toolEntry
-	botEntry
+	toolEntry // dim progress line: tool calls, review steps
+	replyEntry
 	errEntry
 )
 
 // entry is one item of the scrollback; it is rendered at the current width on every refresh.
 type entry struct {
-	kind entryKind
-	text string
+	kind  entryKind
+	text  string
+	label string // title of a replyEntry block: the command's label
 }
 
-type answerMsg struct {
-	text string
-	err  error
+type resultMsg struct {
+	label string
+	text  string
+	err   error
 }
 
 type toolMsg string
 
 type model struct {
-	agent *agent.Agent
+	cmds  commands.Set
 	input textinput.Model
 	view  viewport.Model
 	spin  spinner.Model
 	log   []entry
 	busy  bool
 	width int
+	// pending reports whether a plan awaits /go or /cancel.
+	pending func() bool
 }
 
-// Run starts the chat UI. intro is shown as the first line (index/model info).
-func Run(a *agent.Agent, intro string) error {
+// Run starts the chat UI. intro is shown first (index/model info), followed by the command list.
+func Run(d commands.Deps, intro string) error {
+	cmds := commands.New(d)
 	in := textinput.New()
-	in.Placeholder = "Ask about the docs, files or git history (/exit to quit)"
+	in.Placeholder = defaultPlaceholder
 	in.Prompt = "> "
 	in.CharLimit = 2000
+	in.ShowSuggestions = true
+	in.SetSuggestions(suggestions(cmds))
 	in.Focus()
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 
-	m := model{agent: a, input: in, view: viewport.New(80, 20), spin: sp, log: []entry{{introEntry, intro}}}
+	m := model{cmds: cmds, input: in, view: viewport.New(80, 20), spin: sp,
+		log: []entry{{kind: introEntry, text: intro + "\n\n" + help(cmds)}}, pending: d.Task.Pending}
 	m.refresh()
 
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
-	a.OnToolCall = func(name string, args map[string]any) { p.Send(toolMsg(formatCall(name, args))) }
+	onTool := func(name string, args map[string]any) { p.Send(toolMsg(formatCall(name, args))) }
+	onProgress := func(s string) { p.Send(toolMsg(s)) }
+	d.Agent.OnToolCall = onTool
+	d.Review.OnProgress = onProgress
+	d.Task.Planner.OnToolCall = onTool
+	d.Task.Executor.OnToolCall = onTool
+	d.Task.Executor.OnProgress = onProgress
 	_, err := p.Run()
 	return err
+}
+
+// help lists the chat commands, including the built-in ones.
+func help(cmds commands.Set) string {
+	return "Type a question, or a command (Tab completes):\n" + cmds.Usage("/") +
+		commands.UsageLine("/help", "show this list") +
+		commands.UsageLine("/exit", "quit")
+}
+
+// suggestions are offered for Tab completion while typing a command.
+func suggestions(cmds commands.Set) []string {
+	s := []string{"/help", "/exit"}
+	for _, c := range cmds {
+		if c.Hidden {
+			continue
+		}
+		s = append(s, "/"+c.Name+" ")
+	}
+	return s
 }
 
 func (m model) Init() tea.Cmd { return textinput.Blink }
@@ -102,27 +149,45 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if q == "" || m.busy {
 				return m, nil
 			}
-			if q == "/exit" || q == "/quit" {
-				return m, tea.Quit
-			}
 			m.input.Reset()
+			switch q {
+			case "/exit", "/quit":
+				return m, tea.Quit
+			case "/help":
+				m.add(entry{kind: introEntry, text: help(m.cmds)})
+				return m, nil
+			}
+			c, args, err := m.cmds.Parse(q)
+			if err != nil {
+				m.add(entry{kind: errEntry, text: err.Error()})
+				return m, nil
+			}
 			m.busy = true
-			m.add(userEntry, q)
-			return m, tea.Batch(m.spin.Tick, ask(m.agent, q))
+			m.add(entry{kind: userEntry, text: q})
+			return m, tea.Batch(m.spin.Tick, run(c, args))
 		}
 	case tea.MouseMsg:
 		var cmd tea.Cmd
 		m.view, cmd = m.view.Update(msg)
 		return m, cmd
 	case toolMsg:
-		m.add(toolEntry, string(msg))
+		m.add(entry{kind: toolEntry, text: string(msg)})
 		return m, nil
-	case answerMsg:
+	case resultMsg:
 		m.busy = false
-		if msg.err != nil {
-			m.add(errEntry, msg.err.Error())
-		} else {
-			m.add(botEntry, msg.text)
+		var tooMany *review.TooManyFilesError
+		switch {
+		case errors.As(msg.err, &tooMany):
+			// Not a failure: the user decides whether to raise the limit.
+			m.add(entry{kind: errEntry, label: "warning", text: msg.err.Error()})
+		case msg.err != nil:
+			m.add(entry{kind: errEntry, text: msg.err.Error()})
+		default:
+			m.add(entry{kind: replyEntry, label: msg.label, text: msg.text})
+		}
+		m.input.Placeholder = defaultPlaceholder
+		if m.pending != nil && m.pending() {
+			m.input.Placeholder = pendingPlaceholder
 		}
 		return m, nil
 	case spinner.TickMsg:
@@ -139,15 +204,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	status := dimStyle.Render("enter: ask · pgup/pgdn or mouse: scroll · esc: quit")
+	status := dimStyle.Render("enter: send · tab: complete command · pgup/pgdn or mouse: scroll · esc: quit")
 	if m.busy {
-		status = m.spin.View() + " thinking..."
+		status = m.spin.View() + " working..."
 	}
 	return m.view.View() + "\n" + status + "\n" + m.input.View()
 }
 
-func (m *model) add(kind entryKind, text string) {
-	m.log = append(m.log, entry{kind, text})
+func (m *model) add(e entry) {
+	m.log = append(m.log, e)
 	m.refresh()
 }
 
@@ -156,8 +221,8 @@ func (m *model) refresh() {
 	m.view.GotoBottom()
 }
 
-// render lays out the scrollback: each exchange starts with a rule, questions and answers get a
-// labelled block with a colored left bar, tool calls are dim lines in between.
+// render lays out the scrollback: each exchange starts with a rule, questions and results get a
+// labelled block with a colored left bar, tool calls and progress are dim lines in between.
 func render(log []entry, width int) string {
 	width = max(width, 20)
 	var b strings.Builder
@@ -178,10 +243,22 @@ func render(log []entry, width int) string {
 			b.WriteString(block("You", e.text, userColor, width))
 		case toolEntry:
 			b.WriteString(dimStyle.PaddingLeft(2).Width(width).Render("↳ " + e.text))
-		case botEntry:
-			b.WriteString(block("yocode", e.text, botColor, width))
+		case replyEntry:
+			color, ok := labelColors[e.label]
+			if !ok {
+				color = replyColor
+			}
+			text := e.text
+			if e.label == "diff" {
+				text = colorDiff(text, width-3)
+			}
+			b.WriteString(block(e.label, text, color, width))
 		case errEntry:
-			b.WriteString(block("error", e.text, errColor, width))
+			label, color := "error", errColor
+			if e.label != "" {
+				label, color = e.label, labelColors[e.label]
+			}
+			b.WriteString(block(label, e.text, color, width))
 		}
 	}
 	return b.String()
@@ -193,10 +270,10 @@ func block(label, text string, color lipgloss.Color, width int) string {
 	return barStyle.BorderForeground(color).Width(width - 1).Render(head + "\n" + text)
 }
 
-func ask(a *agent.Agent, q string) tea.Cmd {
+func run(c commands.Command, args []string) tea.Cmd {
 	return func() tea.Msg {
-		text, err := a.Ask(context.Background(), q)
-		return answerMsg{text: text, err: err}
+		text, err := c.Run(context.Background(), args)
+		return resultMsg{label: c.ResultLabel(), text: text, err: err}
 	}
 }
 

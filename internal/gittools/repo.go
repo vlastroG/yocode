@@ -1,4 +1,4 @@
-// Package gittools runs read-only git and file operations inside a project directory.
+// Package gittools runs git reads and file reads and writes inside a project directory.
 package gittools
 
 import (
@@ -21,15 +21,23 @@ type Repo struct {
 }
 
 func (r Repo) Status(ctx context.Context) (string, error) {
-	return r.git(ctx, "status", "--short", "--branch")
+	return r.git(ctx, "status", "--short", "--branch", "--untracked-files=all")
 }
 
-func (r Repo) Log(ctx context.Context, n int, path string) (string, error) {
+// Log shows commits of ref (a branch, commit or range such as main..feature; empty = HEAD),
+// optionally limited to path.
+func (r Repo) Log(ctx context.Context, n int, ref, path string) (string, error) {
+	if err := checkRef(ref); err != nil {
+		return "", err
+	}
 	if n <= 0 {
 		n = 20
 	}
 	n = min(n, 200)
 	args := []string{"log", "-n", strconv.Itoa(n), "--date=short", "--pretty=format:%h %ad %an: %s"}
+	if ref != "" {
+		args = append(args, ref)
+	}
 	if path != "" {
 		p, err := relPath(path)
 		if err != nil {
@@ -41,8 +49,8 @@ func (r Repo) Log(ctx context.Context, n int, path string) (string, error) {
 }
 
 func (r Repo) Diff(ctx context.Context, ref string, staged bool, path string) (string, error) {
-	if strings.HasPrefix(ref, "-") || strings.ContainsAny(ref, " \t\n\x00") {
-		return "", fmt.Errorf("invalid ref %q", ref)
+	if err := checkRef(ref); err != nil {
+		return "", err
 	}
 	args := []string{"diff"}
 	if staged {
@@ -59,6 +67,25 @@ func (r Repo) Diff(ctx context.Context, ref string, staged bool, path string) (s
 		args = append(args, "--", p)
 	}
 	return r.git(ctx, args...)
+}
+
+// ChangedFiles lists the files changed in ref (e.g. "main...feature") as "<status>\t<path>" lines.
+func (r Repo) ChangedFiles(ctx context.Context, ref string) (string, error) {
+	if ref == "" {
+		return "", errors.New("ref is required, e.g. main...feature")
+	}
+	if err := checkRef(ref); err != nil {
+		return "", err
+	}
+	return r.git(ctx, "diff", "--name-status", "--find-renames", ref)
+}
+
+// checkRef rejects refs that git would parse as options or that contain whitespace.
+func checkRef(ref string) error {
+	if strings.HasPrefix(ref, "-") || strings.ContainsAny(ref, " \t\n\x00") {
+		return fmt.Errorf("invalid ref %q", ref)
+	}
+	return nil
 }
 
 func (r Repo) Branches(ctx context.Context) (string, error) {
@@ -97,7 +124,7 @@ func (r Repo) ReadFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if bytes.IndexByte(b[:min(len(b), 8000)], 0) >= 0 {
+	if isBinary(b) {
 		return "", fmt.Errorf("%s looks like a binary file", path)
 	}
 	return truncate(string(b)), nil
@@ -106,7 +133,7 @@ func (r Repo) ReadFile(path string) (string, error) {
 // relPath validates a project-relative path and returns it slash-separated.
 func relPath(path string) (string, error) {
 	clean := filepath.Clean(filepath.FromSlash(path))
-	if filepath.IsAbs(clean) || escapes(clean) {
+	if filepath.IsAbs(clean) || strings.HasPrefix(path, "/") || escapes(clean) {
 		return "", fmt.Errorf("path %q is outside the project", path)
 	}
 	return filepath.ToSlash(clean), nil
@@ -116,11 +143,51 @@ func escapes(rel string) bool {
 	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// Grep searches tracked and untracked (not ignored) text files, returning "path:line:text" lines.
+func (r Repo) Grep(ctx context.Context, pattern, path string, ignoreCase, regex bool) (string, error) {
+	if pattern == "" {
+		return "", errors.New("pattern is required")
+	}
+	args := []string{"grep", "-n", "-I", "--untracked", "--no-color"}
+	if ignoreCase {
+		args = append(args, "-i")
+	}
+	if regex {
+		args = append(args, "-E")
+	} else {
+		args = append(args, "-F")
+	}
+	args = append(args, "-e", pattern)
+	if path != "" {
+		p, err := relPath(path)
+		if err != nil {
+			return "", err
+		}
+		args = append(args, "--", p)
+	}
+	out, err := r.gitCmd(ctx, args...).Output()
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && ee.ExitCode() == 1 && len(bytes.TrimSpace(ee.Stderr)) == 0 {
+		return "(no matches)", nil
+	}
+	return r.result(args, out, err)
+}
+
 func (r Repo) git(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", r.Dir, "--no-pager"}, args...)...)
-	// No index refresh writes (the project is mounted read-only), never prompt.
+	out, err := r.gitCmd(ctx, args...).Output()
+	return r.result(args, out, err)
+}
+
+func (r Repo) gitCmd(ctx context.Context, args ...string) *exec.Cmd {
+	// quotePath off keeps non-ASCII paths readable and usable as tool arguments
+	base := []string{"-C", r.Dir, "--no-pager", "-c", "core.quotePath=false", "-c", "commit.gpgsign=false"}
+	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
+	// optional locks stay off so reads never write the index; never prompt.
 	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
-	out, err := cmd.Output()
+	return cmd
+}
+
+func (r Repo) result(args []string, out []byte, err error) (string, error) {
 	if err != nil {
 		var ee *exec.ExitError
 		msg := ""
